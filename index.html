@@ -7,65 +7,113 @@
   <link href="https://fonts.googleapis.com/css2?family=Liera&display=swap" rel="stylesheet">
   <style>
     *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;-webkit-tap-highlight-color:transparent}
- .dark{background:#0f172a;color:#f1f5f9}
- .light{background:#f8fafc;color:#0f172a}
- .hidden{display:none!important}
- .screen{min-height:100vh;padding:15px;display:flex;flex-direction:column;justify-content:center}
-    button{padding:12px 20px;margin:5px;border:none;border-radius:8px;cursor:pointer;font-size:16px;background:#3b82f6;color:#fff}
- .light button{background:#2563eb}
-    button:disabled{background:#64748b;cursor:not-allowed}
-    input,select,textarea{width:100%;padding:12px;margin:8px 0;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#f1f5f9;font-size:16px}
- .light input,.light select,.light textarea{background:#fff;color:#0f172a;border:1px solid #cbd5e1}
- .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
- .menu-grid div{background:#1e293b;padding:25px;text-align:center;border-radius:12px;cursor:pointer;font-weight:bold}
- .light.menu-grid div{background:#e2e8f0}
+   .dark{background:#0f172a;color:#f1f5f9}
+   .light{background:#f8fafc;color:#0f172a}
+   .hidden{display:none!important}
+   .screen{min-height:100vh;padding:15px}
+    button{padding:12px 20px;margin:5px;border:none;border-radius:8px;cursor:pointer;font-size:16px;background:#3b82f6;color:#fff;font-weight:600}
+   .light button{background:#2563eb}
+    button:disabled{background:#64748b;cursor:not-allowed;opacity:.6}
+   .btn-danger{background:#dc2626!important}
+   .btn-success{background:#10b981!important}
+   .btn-warning{background:#f59e0b!important}
+    input,select,textarea{width:100%;padding:12px;margin:8px 0;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#f1f5f9;font-size:16px}
+   .light input,.light select,.light textarea{background:#fff;color:#0f172a;border:1px solid #cbd5e1}
+   .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+   .menu-grid div{background:#1e293b;padding:30px 15px;text-align:center;border-radius:12px;cursor:pointer;font-weight:bold;font-size:16px;transition:.2s}
+   .menu-grid div:active{transform:scale(.95)}
+   .light.menu-grid div{background:#e2e8f0}
     header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #334155}
- .light header{border-bottom:1px solid #cbd5e1}
-    #coBadge{background:#ef4444;color:#fff;padding:2px 8px;border-radius:5px;font-size:11px;margin-left:5px}
-    #netStatus{position:fixed;top:5px;right:5px;padding:4px 8px;border-radius:5px;font-size:11px;z-index:9999}
- .online{background:#10b981;color:#fff}
- .offline{background:#ef4444;color:#fff}
- .loader{border:4px solid #334155;border-top:4px solid #3b82f6;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:20px auto}
-  @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
- .popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;padding:20px;border-radius:12px;z-index:999;border:2px solid #3b82f6;width:90%;max-width:400px}
- .light.popup{background:#fff}
- .tab{display:flex;margin:10px 0;flex-wrap:wrap}
- .tab button{flex:1;margin:2px;background:#334155;min-width:80px}
- .tab button.active{background:#3b82f6}
- .quest-card{background:#1e293b;padding:15px;margin:10px 0;border-radius:10px}
- .light.quest-card{background:#e2e8f0}
- .game-board{display:grid;gap:8px;margin:20px auto;width:max-content}
- .tictactoe{grid-template-columns:repeat(3,80px)}
- .cell{width:80px;height:80px;background:#334155;display:flex;align-items:center;justify-content:center;font-size:32px;cursor:pointer;border-radius:8px}
- .light.cell{background:#cbd5e1}
+   .light header{border-bottom:1px solid #cbd5e1}
+    #coBadge{background:#ef4444;color:#fff;padding:3px 10px;border-radius:6px;font-size:12px;margin-left:5px;font-weight:bold}
+    #netDot{position:fixed;top:10px;right:10px;width:14px;height:14px;border-radius:50%;z-index:9999;display:none;border:2px solid #fff}
+   .net-online{background:#10b981}
+   .net-offline{background:#ef4444}
+   .game-board{display:grid;gap:8px;margin:20px auto;width:max-content}
+   .tictactoe{grid-template-columns:repeat(3,90px)}
+   .diagonal{grid-template-columns:repeat(4,75px)}
+   .cell{width:75px;height:75px;background:#334155;display:flex;align-items:center;justify-content:center;font-size:36px;cursor:pointer;border-radius:10px;font-weight:bold}
+   .light.cell{background:#cbd5e1}
+   .tictactoe.cell{width:90px;height:90px;font-size:42px}
+   .dice{width:80px;height:80px;border:4px solid #3b82f6;display:inline-flex;align-items:center;justify-content:center;font-size:40px;margin:10px;border-radius:15px;font-weight:bold}
+   .blue-filter{filter:sepia(.2) hue-rotate(180deg) brightness(.9)}
+   .popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;padding:25px;border-radius:15px;z-index:9999;border:3px solid #3b82f6;width:92%;max-width:450px;max-height:85vh;overflow-y:auto}
+   .light.popup{background:#fff}
+   .tab{display:flex;margin:15px 0;flex-wrap:wrap;gap:5px}
+   .tab button{flex:1;margin:2px;background:#334155;min-width:90px;padding:10px;font-size:14px}
+   .tab button.active{background:#3b82f6}
+   .chat-msg{margin:10px 0;padding:12px 15px;border-radius:12px;max-width:75%;word-wrap:break-word;position:relative;user-select:none}
+   .chat-me{background:#3b82f6;margin-left:auto;user-select:text}
+   .chat-other{background:#334155}
+   .light.chat-other{background:#e2e8f0}
+   .chat-me.copy-allowed{user-select:text}
+   .chat-date{font-size:11px;opacity:.7;margin-top:5px}
+   .chat-edited{font-size:10px;opacity:.6;font-style:italic}
+   .quest-card{background:#1e293b;padding:18px;margin:12px 0;border-radius:12px;border:1px solid #334155}
+   .light.quest-card{background:#e2e8f0;border:1px solid #cbd5e1}
+   .context-menu{position:fixed;background:#1e293b;border:2px solid #3b82f6;border-radius:10px;z-index:10000;min-width:200px}
+   .light.context-menu{background:#fff}
+   .context-menu button{display:block;width:100%;text-align:left;margin:0;border-radius:0;background:transparent;color:inherit;border-bottom:1px solid #334155}
+   .context-menu button:last-child{border-bottom:none}
+   .context-menu button:hover{background:#3b82f6;color:#fff}
+   .list-item{background:#1e293b;padding:15px;margin:10px 0;border-radius:10px;cursor:pointer;border:1px solid #334155}
+   .light.list-item{background:#e2e8f0;border:1px solid #cbd5e1}
+   .badge{background:#3b82f6;color:#fff;padding:2px 8px;border-radius:5px;font-size:11px;margin-left:8px}
   </style>
 </head>
 <body class="dark">
-  <div id="netStatus" class="online">Online</div>
+  <div id="netDot"></div>
+  <div id="contextMenu" class="context-menu hidden"></div>
 
-  <div id="nameScreen" class="screen">
-    <h1 style="font-family:'Liera',cursive;text-align:center;font-size:40px;margin-bottom:40px">YOUR CHOICE</h1>
-    <input id="userNameInput" placeholder="তোমার নাম লেখো" maxlength="20" style="text-align:center;font-size:18px">
-    <button id="continueBtn" style="width:100%;margin-top:20px">Continue</button>
+  <!-- Entry Screen -->
+  <div id="entryScreen" class="screen">
+    <h1 style="font-family:'Liera',cursive;text-align:center;margin-top:35vh;font-size:45px;letter-spacing:2px">YOUR CHOICE</h1>
+    <button id="enterBtn" style="display:block;margin:35px auto;width:220px;font-size:18px">Enter</button>
   </div>
 
-  <div id="loadingScreen" class="screen hidden">
-    <h1 style="font-family:'Liera',cursive;text-align:center;font-size:40px">YOUR CHOICE</h1>
-    <div class="loader"></div>
-    <p style="text-align:center;opacity:.7">Profile তৈরি হচ্ছে...</p>
+  <!-- Profile Create Screen -->
+  <div id="profileCreateScreen" class="screen hidden">
+    <h2 style="text-align:center;margin-bottom:10px">Create Profile</h2>
+    <p style="text-align:center;opacity:.7;margin-bottom:25px">প্রথমবার প্রোফাইল বানাও</p>
+    <input id="createName" placeholder="Full Name *">
+    <input id="createPass" type="password" placeholder="Password *">
+    <input id="createAge" type="number" placeholder="Age *">
+    <select id="createGender">
+      <option value="">Gender *</option>
+      <option value="Male">Male</option>
+      <option value="Female">Female</option>
+      <option value="Other">Other</option>
+    </select>
+    <input id="createSchool" placeholder="School Name *">
+    <input id="createClass" placeholder="Class *">
+    <button id="createProfileBtn" style="width:100%;margin-top:20px;font-size:18px">Create Profile</button>
+    <button id="showRestoreBtn" style="width:100%;background:#10b981;margin-top:10px">Restore Old Profile</button>
   </div>
 
-  <div id="homeScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Restore Profile Screen -->
+  <div id="restoreScreen" class="screen hidden">
+    <button class="backBtn" data-target="profileCreateScreen">← Back</button>
+    <h2 style="text-align:center;margin:20px 0">Restore Profile</h2>
+    <p style="text-align:center;opacity:.7;margin-bottom:20px">Serial Number দিয়ে পুরনো Profile ফেরত পাও</p>
+    <input id="restoreSerial" placeholder="Enter Your Serial Number (e.g. SABC123)">
+    <button id="restoreBySerialBtn" style="width:100%;background:#8b5cf6;font-size:18px">Restore Profile</button>
+  </div>
+
+  <!-- Home Screen -->
+  <div id="homeScreen" class="screen hidden">
     <header>
-      <div id="profileBtn" style="cursor:pointer">
-        <img id="userDP" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Ccircle cx='20' cy='20' r='20' fill='%233b82f6'/%3E%3C/svg%3E" style="width:40px;height:40px;border-radius:50%;vertical-align:middle">
-        <span id="userNameSerial" style="margin-left:8px;font-weight:bold"></span>
-        <span id="coBadge" class="hidden">CO</span>
-        <div id="userRankScore" style="font-size:13px;opacity:.8"></div>
+      <div id="profileBtn" style="cursor:pointer;display:flex;align-items:center">
+        <img id="userDP" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='45' height='45'%3E%3Ccircle cx='22.5' cy='22.5' r='22.5' fill='%233b82f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='white' font-size='20'%3EU%3C/text%3E%3C/svg%3E" style="width:45px;height:45px;border-radius:50%">
+        <div style="margin-left:12px">
+          <div style="font-weight:bold;font-size:16px"><span id="userNameSerial"></span><span id="coBadge" class="hidden">CO</span></div>
+          <div id="userRankScore" style="font-size:13px;opacity:.8;margin-top:2px"></div>
+        </div>
       </div>
       <div style="text-align:right">
-        <div>📢 <span id="latestNotice">Welcome</span></div>
-        <button id="themeBtn" style="padding:5px 10px;font-size:12px">🌙</button>
+        <div style="margin-bottom:8px">📢 <span id="latestNotice">Welcome</span></div>
+        <button id="themeBtn" style="padding:6px 12px;font-size:13px">🌙</button>
+        <button id="blueFilterBtn" style="padding:6px 12px;font-size:13px">🔵</button>
+        <button id="guidelineBtn" style="padding:6px 12px;font-size:13px">📖</button>
       </div>
     </header>
     <div class="menu-grid">
@@ -78,79 +126,158 @@
       <div data-screen="knowledgeScreen">Knowledge</div>
       <div data-screen="literatureScreen">Literature</div>
     </div>
-    <button id="coPanelBtn" class="hidden" style="width:100%;background:#ef4444;margin-top:20px">CO Panel</button>
+    <button id="coPanelBtn" class="hidden btn-danger" style="width:100%;margin-top:25px;font-size:17px">CO Panel</button>
   </div>
 
-  <div id="questScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Quest Screen -->
+  <div id="questScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Quest</h2>
+    <h2>Quest - 7 Types</h2>
+    <div class="tab" id="questTabs">
+      <button data-quest="mcq" class="active">MCQ +2/-0.5</button>
+      <button data-quest="vsaq">VSAQ +3/-1</button>
+      <button data-quest="break">Break +10/-2</button>
+      <button data-quest="picture">Picture +4/-1.5</button>
+      <button data-quest="audio">Audio +4/-1.5</button>
+      <button data-quest="video">Video +4/-1.5</button>
+      <button data-quest="learning">Learning +1/0</button>
+    </div>
     <div id="questList"></div>
   </div>
 
-  <div id="gamesScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Contact Screen -->
+  <div id="contactScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Games</h2>
-    <div class="game-board tictactoe" id="gameBoard"></div>
-    <p style="text-align:center">TicTacToe - Demo Game</p>
+    <h2>Contact</h2>
+    <div class="tab" id="contactTabs">
+      <button data-tab="friends" class="active">Friends</button>
+      <button data-tab="groups">Groups</button>
+      <button data-tab="request">Request</button>
+      <button data-tab="find">Find User</button>
+      <button data-tab="anonymous">Anonymous</button>
+    </div>
+    <div id="contactArea"></div>
   </div>
 
-  <div id="toolsScreen" class="screen hidden" style="justify-content:flex-start">
-    <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Tools</h2>
-    <div class="menu-grid">
-      <div onclick="alert('Calculator')">Calculator</div>
-      <div onclick="alert('Stopwatch')">Stopwatch</div>
-      <div onclick="alert('QR Scanner')">QR Scanner</div>
-      <div onclick="alert('PDF Viewer')">PDF Viewer</div>
+  <!-- Chat Screen -->
+  <div id="chatScreen" class="screen hidden">
+    <button class="backBtn" data-target="contactScreen">← Back</button>
+    <h2 id="chatWithName">Chat</h2>
+    <div id="chatMessages" style="height:65vh;overflow-y:auto;border:1px solid #334155;padding:15px;border-radius:12px;margin:15px 0;background:#0f172a"></div>
+    <div style="display:flex;gap:8px">
+      <input id="chatInput" placeholder="Type message..." style="flex:1;margin:0">
+      <button id="sendChatBtn" style="margin:0">Send</button>
     </div>
   </div>
 
-  <div id="contactScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Games Screen -->
+  <div id="gamesScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Contact</h2>
-    <p>Friends, Chat - Coming Soon</p>
+    <h2>Games</h2>
+    <div class="tab">
+      <button data-game="tictactoe" class="active">TicTacToe -5</button>
+      <button data-game="diagonal">Diagonal -5</button>
+      <button data-game="dice">Dice Roll -5</button>
+    </div>
+    <div id="gameArea"></div>
+    <div id="coAddGame" class="hidden">
+      <h3 style="margin-top:30px">CO: Add New Game</h3>
+      <input id="gameTitle" placeholder="Game Title">
+      <textarea id="gameCode" placeholder="Paste Full HTML/JS Code" rows="6"></textarea>
+      <input id="gameCost" type="number" placeholder="Score Cost" value="5">
+      <input id="gameWin" type="number" placeholder="Win Bonus" value="7">
+      <button id="addNewGameBtn" class="btn-success" style="width:100%">Add Game</button>
+    </div>
   </div>
 
-  <div id="eventScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Tools Screen -->
+  <div id="toolsScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Event</h2>
-    <p>Live Quiz - Coming Soon</p>
+    <h2>Tools - Offline/Online</h2>
+    <div class="menu-grid" id="toolsGrid">
+      <div data-tool="calc">Calculator</div>
+      <div data-tool="chess">Chess Clock</div>
+      <div data-tool="countdown">Countdown</div>
+      <div data-tool="pdf">PDF Viewer</div>
+      <div data-tool="qr">QR Scanner</div>
+      <div data-tool="stopwatch">Stopwatch</div>
+    </div>
+    <div id="toolArea" style="margin-top:25px"></div>
   </div>
 
-  <div id="applicationScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Event Screen -->
+  <div id="eventScreen" class="screen hidden">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
+    <h2>Event / Live Quiz</h2>
+    <div id="eventList"></div>
+  </div>
+
+  <!-- Application Screen -->
+  <div id="applicationScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
     <h2>Application</h2>
-    <p>Form List - Coming Soon</p>
+    <div id="applicationList"></div>
+    <div id="coAppCreate" class="hidden">
+      <h3>CO: Create Application</h3>
+      <input id="appTitle" placeholder="Title">
+      <textarea id="appDesc" placeholder="Description" rows="4"></textarea>
+      <input id="appLink" placeholder="Form Link/URL">
+      <input id="appDeadline" type="datetime-local">
+      <button id="saveApplicationBtn" class="btn-success" style="width:100%">Create Application</button>
+    </div>
   </div>
 
-  <div id="knowledgeScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Knowledge Screen -->
+  <div id="knowledgeScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Knowledge</h2>
-    <p>Posts - Coming Soon</p>
+    <h2>Knowledge <span class="badge">Auto Delete 30d</span></h2>
+    <div id="knowledgeList"></div>
   </div>
 
-  <div id="literatureScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Literature Screen -->
+  <div id="literatureScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Literature</h2>
-    <p>Poem, Story - Coming Soon</p>
+    <h2>Literature <span class="badge">Auto Delete 360d</span></h2>
+    <div id="literatureList"></div>
+    <div id="coLitCreate" class="hidden">
+      <h3>CO: Create Literature</h3>
+      <input id="litTitle" placeholder="Title">
+      <textarea id="litContent" placeholder="Poem/Story/Quote" rows="8"></textarea>
+      <select id="litType"><option>Poem</option><option>Story</option><option>Quote</option></select>
+      <button id="saveLiteratureBtn" class="btn-success" style="width:100%">Post Literature</button>
+    </div>
   </div>
 
-  <div id="profileScreen" class="screen hidden" style="justify-content:flex-start">
+  <!-- Profile Screen -->
+  <div id="profileScreen" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>Profile</h2>
-    <div id="profileData"></div>
-    <button id="logoutBtn" style="background:#ef4444;width:100%;margin-top:20px">Logout</button>
+    <h2>My Profile</h2>
+    <div id="profileData" class="quest-card"></div>
+    <button id="editProfileBtn" style="width:100%">Edit Profile</button>
+    <button id="changePasswordBtn" class="btn-warning" style="width:100%">Change Password</button>
+    <button id="logoutBtn" class="btn-danger" style="width:100%">Logout</button>
   </div>
 
-  <div id="coPanel" class="screen hidden" style="justify-content:flex-start">
+  <!-- CO Panel -->
+  <div id="coPanel" class="screen hidden">
     <button class="backBtn" data-target="homeScreen">← Back</button>
-    <h2>CO Panel</h2>
-    <p>CO Features - Coming Soon</p>
+    <h2>CO Panel - Full Control</h2>
+    <button id="coCreateQuestBtn" style="width:100%">+ Create Quest 7 Types</button>
+    <button id="coCreateEventBtn" style="width:100%">+ Create Event/Live Quiz</button>
+    <button id="coCreateKnowledgeBtn" style="width:100%">+ Create Knowledge</button>
+    <button id="coCreateApplicationBtn" style="width:100%">+ Create Application</button>
+    <button id="coCreateLiteratureBtn" style="width:100%">+ Create Literature</button>
+    <button id="coManageUsersBtn" class="btn-warning" style="width:100%">Manage Users</button>
+    <button id="coPostNoticeBtn" class="btn-success" style="width:100%">Post Notice</button>
+    <button id="coMakeCOBtn" style="width:100%;background:#8b5cf6">Make New CO</button>
+    <button id="coViewAnalyticsBtn" style="width:100%;background:#06b6d4">View Analytics</button>
+    <button id="coDeleteScoreLogsBtn" class="btn-danger" style="width:100%;margin-top:20px">⚠️ Delete All Score Logs</button>
+    <div id="coArea" style="margin-top:25px"></div>
   </div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-  import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
+  import { getDatabase, ref, set, get, push, onValue, remove, update, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDbFaMS-WtEYho-rUG1b1YNnfcE44u3VXI",
@@ -165,70 +292,360 @@
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
-  // No throw error - Bug fixed
+  // One Tab Only Check
+  if(sessionStorage.getItem('tabOpen')){
+    document.body.innerHTML='<h1 style="text-align:center;margin-top:40vh">App Already Open in Another Tab</h1>';
+    throw new Error('Multiple tabs');
+  }
   sessionStorage.setItem('tabOpen','true');
   window.addEventListener('beforeunload',()=>sessionStorage.removeItem('tabOpen'));
 
   let isOnline = navigator.onLine;
-  const updateNetStatus=()=>{
+  let currentUser=null,userScore=100,userSerial='',isCO=false,currentChatWith=null,currentChatType='personal';
+
+  const updateNetDot=()=>{
     isOnline = navigator.onLine;
-    document.getElementById('netStatus').className = isOnline? 'online' : 'offline';
-    document.getElementById('netStatus').innerText = isOnline? 'Online' : 'Offline';
+    const dot = document.getElementById('netDot');
+    dot.className = isOnline? 'net-online' : 'net-offline';
   }
-  window.addEventListener('online',updateNetStatus);
-  window.addEventListener('offline',updateNetStatus);
-  updateNetStatus();
+  window.addEventListener('online',()=>{updateNetDot();syncOfflineScore()});
+  window.addEventListener('offline',updateNetDot);
+
+  // Security Block
+  document.addEventListener('keyup',e=>{
+    if(e.key=='PrintScreen'){
+      document.body.style.filter='brightness(0)';
+      setTimeout(()=>document.body.style.filter='',100);
+    }
+  });
+  document.addEventListener('contextmenu',e=>e.preventDefault());
+  document.addEventListener('selectstart',e=>{
+    if(!e.target.classList.contains('copy-allowed') && e.target.tagName!=='INPUT' && e.target.tagName!=='TEXTAREA'){
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('copy',e=>{
+    if(!e.target.classList.contains('copy-allowed') && e.target.tagName!=='INPUT' && e.target.tagName!=='TEXTAREA'){
+      e.preventDefault();
+    }
+  });
 
   // Theme
   if(localStorage.getItem('theme')==='light')document.body.className='light';
-  document.getElementById('themeBtn').onclick=()=>{
+  const toggleTheme=()=>{
     document.body.classList.toggle('dark');
     document.body.classList.toggle('light');
     localStorage.setItem('theme',document.body.className);
+    if(isOnline&&userSerial)update(ref(db,'users/'+userSerial),{theme:document.body.className});
   }
 
-  let currentUser=null,userScore=100,userSerial='';
-  
+  // Blue Filter Auto
+  const checkBlueFilter=()=>{
+    let hour=new Date().getHours();
+    if(hour>=18||hour<6) document.body.classList.add('blue-filter');
+    else document.body.classList.remove('blue-filter');
+  }
+  checkBlueFilter();
+  setInterval(checkBlueFilter,60000);
+
   const showScreen=(id)=>{
     document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
+    if(id==='homeScreen'){
+      document.getElementById('netDot').style.display='block';
+      updateNetDot();
+    }else{
+      document.getElementById('netDot').style.display='none';
+    }
+    hideContextMenu();
   }
 
-  const genSerial=()=> 'S'+Math.random().toString(36).substr(2,6).toUpperCase();
+  const showGuideline=()=>{
+    alert(`YOUR CHOICE - নিয়মাবলী
 
-  // Auto Login Check
-  const savedSerial = localStorage.getItem('userSerial');
-  if(savedSerial){
-    showScreen('loadingScreen');
-    get(ref(db,'users/'+savedSerial)).then(snap=>{
+1. Game Entry: -5 Score, Win: +7 Score
+2. Quest ভুল উত্তর: Score কাটবে
+3. ছবি/Video/Audio: 21 দিন পর Auto Delete (Profile DP বাদ)
+4. PDF/File: 15 দিন পর Auto Delete
+5. Literature: 360 দিন পর Auto Delete
+6. Knowledge: 30 দিন পর Auto Delete
+7. Chat Text: 5 দিন পর Auto Delete
+8. নিজের Chat: 3 দিন Copy + Edit + Delete করা যাবে
+9. Event/App: Deadline শেষ হলে Delete
+10. PrintScreen/Copy Blocked
+11. One Tab Only
+12. Offline Score Auto Sync হবে
+13. CO এক ক্লিকে সব Score Log Delete করতে পারবে
+
+OK`);
+  }
+
+  // Auto Delete Functions
+  const autoDeleteOldData=async()=>{
+    const now=Date.now();
+    const day21=21*24*60*60*1000, day15=15*24*60*60*1000, day30=30*24*60*60*1000, day360=360*24*60*60*1000, day5=5*24*60*60*1000;
+
+    // Knowledge 30 days
+    get(ref(db,'knowledge')).then(snap=>{
+      snap.forEach(child=>{
+        if(now-child.val().created>day30) remove(ref(db,'knowledge/'+child.key));
+      });
+    });
+
+    // Literature 360 days
+    get(ref(db,'literature')).then(snap=>{
+      snap.forEach(child=>{
+        if(now-child.val().created>day360) remove(ref(db,'literature/'+child.key));
+      });
+    });
+
+    // Chat 5 days - Personal & Group
+    get(ref(db,'chats')).then(snap=>{
+      snap.forEach(child=>{
+        Object.entries(child.val()).forEach(([msgId,msg])=>{
+          if(now-msg.time>day5) remove(ref(db,'chats/'+child.key+'/'+msgId));
+        });
+      });
+    });
+
+    // Media 21 days - from all locations
+    ['quests','literature','chats','knowledge'].forEach(path=>{
+      get(ref(db,path)).then(snap=>{
+        snap.forEach(child=>{
+          const data=child.val();
+          if(data.mediaType && data.created && now-data.created>day21){
+            if(path!=='users' || child.key!=='dp') remove(ref(db,path+'/'+child.key));
+          }
+        });
+      });
+    });
+  }
+  setInterval(autoDeleteOldData,3600000); // Every hour
+
+  // First Time Check
+  const initApp=async()=>{
+    const savedSerial = localStorage.getItem('userSerial');
+    if(savedSerial){
+      const snap=await get(ref(db,'users/'+savedSerial));
       if(snap.exists()){
         currentUser=snap.val();
         userSerial=savedSerial;
         userScore=currentUser.score||100;
-        setTimeout(()=>loadHome(),500);
+        isCO=currentUser.isCO||false;
+        loadHome();
       }else{
         localStorage.removeItem('userSerial');
-        showScreen('nameScreen');
+        showScreen('entryScreen');
       }
-    });
-  }else{
-    showScreen('nameScreen');
+    }else{
+      showScreen('entryScreen');
+    }
+  }
+  initApp();
+
+  // Score Functions
+  const saveOfflineScore=(amount)=>{
+    let localScore = parseInt(localStorage.getItem('offlineScore')||userScore);
+    localScore += amount;
+    localStorage.setItem('offlineScore',localScore);
+    userScore=localScore;
+    updateRankDisplay();
   }
 
-  // Create Profile - Only Name
-  document.getElementById('continueBtn').onclick=async()=>{
-    const name = document.getElementById('userNameInput').value.trim();
-    if(!name){alert('নাম লেখো');return}
-    if(name.length<2){alert('নাম কমপক্ষে 2 অক্ষর');return}
-    
-    showScreen('loadingScreen');
-    userSerial = genSerial();
-    currentUser = {
-      name:name,
-      serial:userSerial,
-      score:100,
-      rank:'Beginner',
-      isCO:userSerial==='SADMIN1',
+  const syncOfflineScore=async()=>{
+    let offlineScore = localStorage.getItem('offlineScore');
+    if(offlineScore && userSerial && isOnline){
+      await update(ref(db,'users/'+userSerial),{score:parseInt(offlineScore)});
+      userScore = parseInt(offlineScore);
+      localStorage.removeItem('offlineScore');
+      updateRank();
+    }
+  }
+
+  const deductScore=async(amount)=>{
+    if(isOnline&&userSerial){
+      userScore-=amount;
+      await update(ref(db,'users/'+userSerial),{score:userScore});
+      await push(ref(db,'users/'+userSerial+'/scoreLog'),{amount:-amount,reason:'Game/Quest',time:Date.now()});
+      updateRank();
+    }else{
+      saveOfflineScore(-amount);
+    }
+  }
+
+  const addScore=async(amount)=>{
+    if(isOnline&&userSerial){
+      userScore+=amount;
+      await update(ref(db,'users/'+userSerial),{score:userScore});
+      await push(ref(db,'users/'+userSerial+'/scoreLog'),{amount:amount,reason:'Win/Quest',time:Date.now()});
+      updateRank();
+    }else{
+      saveOfflineScore(amount);
+    }
+  }
+
+  const updateRank=async()=>{
+    let r='Beginner';
+    if(userScore>=200)r='Learner';
+    if(userScore>=400)r='Expert';
+    if(userScore>=700)r='Master';
+    if(userScore>=1000)r='Legend';
+    if(currentUser)currentUser.rank=r;
+    if(isOnline&&userSerial)await update(ref(db,'users/'+userSerial),{rank:r});
+    updateRankDisplay();
+  }
+
+  const updateRankDisplay=()=>{
+    if(currentUser)document.getElementById('userRankScore').innerText='Rank: '+currentUser.rank+' | Score: '+userScore+(isOnline?'':' [Offline]');
+  }
+
+  const checkOnline=()=>{
+    if(!isOnline){
+      alert('Internet Required');
+      return false;
+    }
+    return true;
+  }
+
+  const genSerial=()=> 'S'+Math.random().toString(36).substr(2,6).toUpperCase();
+
+  // Profile Functions
+  const createProfile=async()=>{
+    if(!checkOnline())return;
+    const name=document.getElementById('createName').value.trim();
+    const pass=document.getElementById('createPass').value.trim();
+    const age=document.getElementById('createAge').value;
+    const gender=document.getElementById('createGender').value;
+    const school=document.getElementById('createSchool').value.trim();
+    const cls=document.getElementById('createClass').value.trim();
+    if(!name||!pass||!age||!gender||!school||!cls){alert('Fill all fields');return}
+    const serial=genSerial();
+    currentUser={name:name,password:pass,age:age,gender:gender,school:school,class:cls,serial:serial,score:100,isCO:false,rank:'Beginner',banned:false,created:Date.now(),theme:document.body.className,dp:null};
+    await set(ref(db,'users/'+serial),currentUser);
+    localStorage.setItem('userSerial',serial);
+    alert('Profile Created!\nYour Serial: '+serial+'\nSave this to restore profile');
+    userSerial=serial;userScore=100;isCO=false;
+    loadHome();
+  }
+
+  const restoreBySerial=async()=>{
+    if(!checkOnline())return;
+    const serial=document.getElementById('restoreSerial').value.trim().toUpperCase();
+    if(!serial){alert('Enter Serial');return}
+    const snap=await get(ref(db,'users/'+serial));
+    if(snap.exists()){
+      const user=snap.val();
+      if(user.banned){alert('This profile is banned');return}
+      currentUser=user;
+      localStorage.setItem('userSerial',serial);
+      userSerial=serial;userScore=currentUser.score||100;isCO=currentUser.isCO||false;
+      if(currentUser.theme)localStorage.setItem('theme',currentUser.theme);
+      if(localStorage.getItem('theme')==='light')document.body.className='light';
+      alert('Profile Restored Successfully!');
+      loadHome();
+    }else{
+      alert('Serial Not Found');
+    }
+  }
+
+  const loadHome=()=>{
+    document.getElementById('userNameSerial').innerText=currentUser.name+'#'+userSerial;
+    updateRankDisplay();
+    if(isCO){
+      document.getElementById('coBadge').classList.remove('hidden');
+      document.getElementById('coPanelBtn').classList.remove('hidden');
+      document.getElementById('coAddGame').classList.remove('hidden');
+      document.getElementById('coAppCreate').classList.remove('hidden');
+      document.getElementById('coLitCreate').classList.remove('hidden');
+    }
+    // Load Notice
+    get(ref(db,'notice')).then(snap=>{
+      if(snap.exists())document.getElementById('latestNotice').innerText=snap.val().text||'Welcome';
+    });
+    showScreen('homeScreen');
+    autoDeleteOldData();
+  }
+
+  // Event Listeners
+  document.getElementById('enterBtn').onclick = ()=>{
+    if(localStorage.getItem('userSerial')){
+      initApp();
+    }else{
+      showScreen('profileCreateScreen');
+    }
+  }
+  document.getElementById('createProfileBtn').onclick = createProfile;
+  document.getElementById('showRestoreBtn').onclick = ()=>showScreen('restoreScreen');
+  document.getElementById('restoreBySerialBtn').onclick = restoreBySerial;
+  document.getElementById('themeBtn').onclick = toggleTheme;
+  document.getElementById('blueFilterBtn').onclick = ()=>document.body.classList.toggle('blue-filter');
+  document.getElementById('guidelineBtn').onclick = showGuideline;
+
+  document.getElementById('profileBtn').onclick = ()=>{
+    document.getElementById('profileData').innerHTML=`
+      <p><b>Name:</b> ${currentUser.name}</p>
+      <p><b>Serial:</b> ${userSerial}</p>
+      <p><b>Rank:</b> ${currentUser.rank}</p>
+      <p><b>Score:</b> ${userScore}</p>
+      <p><b>School:</b> ${currentUser.school}</p>
+      <p><b>Class:</b> ${currentUser.class}</p>
+      <p><b>Age:</b> ${currentUser.age}</p>
+      <p><b>Gender:</b> ${currentUser.gender}</p>
+    `;
+    showScreen('profileScreen');
+  }
+
+  document.getElementById('coPanelBtn').onclick = ()=>showScreen('coPanel');
+
+  document.getElementById('logoutBtn').onclick = ()=>{
+    if(confirm('Logout? You will need Serial to restore')){
+      localStorage.removeItem('userSerial');
+      location.reload();
+    }
+  }
+
+  document.getElementById('changePasswordBtn').onclick = async()=>{
+    const newPass=prompt('Enter New Password:');
+    if(newPass && newPass.trim()){
+      await update(ref(db,'users/'+userSerial),{password:newPass.trim()});
+      currentUser.password=newPass.trim();
+      alert('Password Changed!');
+    }
+  }
+
+  document.querySelectorAll('[data-screen]').forEach(el=>{
+    el.onclick=()=>showScreen(el.dataset.screen);
+  });
+
+  document.querySelectorAll('.backBtn').forEach(btn=>{
+    btn.onclick=()=>showScreen(btn.dataset.target);
+  });
+
+  // Chat System with Long Press Menu
+  const hideContextMenu=()=>document.getElementById('contextMenu').classList.add('hidden');
+  document.addEventListener('click',hideContextMenu);
+
+  const showChatContextMenu=(e,msgId,msg,isGroup)=>{
+    e.preventDefault();
+    const menu=document.getElementById('contextMenu');
+    const now=Date.now();
+    const age=now-msg.time;
+    const canCopy=age<3*24*60*60*1000;
+
+    menu.innerHTML=`
+      <button data-action="deleteEveryone">Delete for everyone</button>
+      <button data-action="deleteMe">Delete for me</button>
+      <button data-action="edit">Edit chat</button>
+      <button data-action="copy" ${!canCopy?'disabled':''}>Copy chat ${canCopy?'':' (Expired)'}</button>
+      <button data-action="info">Info</button>
+    `;
+    menu.style.left=e.pageX+'px';
+    menu.style.top=e.pageY+'px';
+    menu.classList.remove('hidden');
+
+    menu.querySelectorAll('button').forEach(btn=>{
+      btn.onclick=async()=>{
+        const action=btn.dataset      isCO:userSerial==='SADMIN1',
       created:Date.now()
     };
     
