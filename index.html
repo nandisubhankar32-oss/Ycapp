@@ -1,261 +1,156 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="bn">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <title>YOUR CHOICE</title>
   <link href="https://fonts.googleapis.com/css2?family=Liera&display=swap" rel="stylesheet">
   <style>
     *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;-webkit-tap-highlight-color:transparent}
-  .dark{background:#0f172a;color:#f1f5f9}
-  .light{background:#f8fafc;color:#0f172a}
-  .hidden{display:none!important}
-  .screen{min-height:100vh;padding:15px}
+ .dark{background:#0f172a;color:#f1f5f9}
+ .light{background:#f8fafc;color:#0f172a}
+ .hidden{display:none!important}
+ .screen{min-height:100vh;padding:15px;display:flex;flex-direction:column;justify-content:center}
     button{padding:12px 20px;margin:5px;border:none;border-radius:8px;cursor:pointer;font-size:16px;background:#3b82f6;color:#fff}
-  .light button{background:#2563eb}
+ .light button{background:#2563eb}
     button:disabled{background:#64748b;cursor:not-allowed}
-    input,select,textarea{width:100%;padding:10px;margin:8px 0;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#f1f5f9}
-  .light input,.light select,.light textarea{background:#fff;color:#0f172a;border:1px solid #cbd5e1}
-  .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
-  .menu-grid div{background:#1e293b;padding:25px;text-align:center;border-radius:12px;cursor:pointer;font-weight:bold}
-  .light.menu-grid div{background:#e2e8f0}
+    input,select,textarea{width:100%;padding:12px;margin:8px 0;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#f1f5f9;font-size:16px}
+ .light input,.light select,.light textarea{background:#fff;color:#0f172a;border:1px solid #cbd5e1}
+ .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+ .menu-grid div{background:#1e293b;padding:25px;text-align:center;border-radius:12px;cursor:pointer;font-weight:bold}
+ .light.menu-grid div{background:#e2e8f0}
     header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #334155}
-  .light header{border-bottom:1px solid #cbd5e1}
+ .light header{border-bottom:1px solid #cbd5e1}
     #coBadge{background:#ef4444;color:#fff;padding:2px 8px;border-radius:5px;font-size:11px;margin-left:5px}
     #netStatus{position:fixed;top:5px;right:5px;padding:4px 8px;border-radius:5px;font-size:11px;z-index:9999}
-  .online{background:#10b981;color:#fff}
-  .offline{background:#ef4444;color:#fff}
-  .game-board{display:grid;gap:8px;margin:20px auto;width:max-content}
-  .tictactoe{grid-template-columns:repeat(3,80px)}
-  .diagonal{grid-template-columns:repeat(4,70px)}
-  .cell{width:70px;height:70px;background:#334155;display:flex;align-items:center;justify-content:center;font-size:32px;cursor:pointer;border-radius:8px}
-  .light.cell{background:#cbd5e1}
-  .tictactoe.cell{width:80px;height:80px}
-  .dice{width:70px;height:70px;border:3px solid #3b82f6;display:inline-flex;align-items:center;justify-content:center;font-size:36px;margin:10px;border-radius:12px}
-  .blue-filter{filter:sepia(0.2) hue-rotate(180deg) brightness(0.9)}
-  .popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;padding:20px;border-radius:12px;z-index:999;border:2px solid #3b82f6;width:90%;max-width:400px}
-  .light.popup{background:#fff}
-  .tab{display:flex;margin:10px 0;flex-wrap:wrap}
-  .tab button{flex:1;margin:2px;background:#334155;min-width:80px}
-  .tab button.active{background:#3b82f6}
-  .chat-msg{margin:8px 0;padding:8px;border-radius:8px;max-width:80%;word-wrap:break-word}
-  .chat-me{background:#3b82f6;margin-left:auto}
-  .chat-other{background:#334155}
-  .light.chat-other{background:#e2e8f0}
-  .quest-card{background:#1e293b;padding:15px;margin:10px 0;border-radius:10px}
-  .light.quest-card{background:#e2e8f0}
-  .calc-btn{background:#334155!important}
-  .calc-op{background:#f59e0b!important}
+ .online{background:#10b981;color:#fff}
+ .offline{background:#ef4444;color:#fff}
+ .loader{border:4px solid #334155;border-top:4px solid #3b82f6;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:20px auto}
+  @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+ .popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;padding:20px;border-radius:12px;z-index:999;border:2px solid #3b82f6;width:90%;max-width:400px}
+ .light.popup{background:#fff}
+ .tab{display:flex;margin:10px 0;flex-wrap:wrap}
+ .tab button{flex:1;margin:2px;background:#334155;min-width:80px}
+ .tab button.active{background:#3b82f6}
+ .quest-card{background:#1e293b;padding:15px;margin:10px 0;border-radius:10px}
+ .light.quest-card{background:#e2e8f0}
+ .game-board{display:grid;gap:8px;margin:20px auto;width:max-content}
+ .tictactoe{grid-template-columns:repeat(3,80px)}
+ .cell{width:80px;height:80px;background:#334155;display:flex;align-items:center;justify-content:center;font-size:32px;cursor:pointer;border-radius:8px}
+ .light.cell{background:#cbd5e1}
   </style>
 </head>
 <body class="dark">
   <div id="netStatus" class="online">Online</div>
 
-
-  <div id="entryScreen" class="screen">
-    <h1 style="font-family:'Liera',cursive;text-align:center;margin-top:35vh;font-size:40px">YOUR CHOICE</h1>
-    <button onclick="enterApp()" style="display:block;margin:30px auto;width:200px">Enter</button>
+  <div id="nameScreen" class="screen">
+    <h1 style="font-family:'Liera',cursive;text-align:center;font-size:40px;margin-bottom:40px">YOUR CHOICE</h1>
+    <input id="userNameInput" placeholder="তোমার নাম লেখো" maxlength="20" style="text-align:center;font-size:18px">
+    <button id="continueBtn" style="width:100%;margin-top:20px">Continue</button>
   </div>
 
-
-  <div id="authScreen" class="screen hidden">
-    <h2 style="text-align:center">Login / Signup</h2>
-    <input id="authName" placeholder="Full Name">
-    <input id="authPass" type="password" placeholder="Password">
-    <input id="authAge" type="number" placeholder="Age">
-    <select id="authGender">
-      <option value="">Gender</option>
-      <option value="Male">Male</option>
-      <option value="Female">Female</option>
-      <option value="Other">Other</option>
-    </select>
-    <input id="authSchool" placeholder="School Name">
-    <input id="authClass" placeholder="Class">
-    <button onclick="signup()" style="width:100%">Signup</button>
-    <button onclick="login()" style="width:100%;background:#10b981">Login</button>
-    <p onclick="showScreen('restoreScreen')" style="text-align:center;margin-top:15px;cursor:pointer;color:#3b82f6">Forgot Password/Serial?</p>
+  <div id="loadingScreen" class="screen hidden">
+    <h1 style="font-family:'Liera',cursive;text-align:center;font-size:40px">YOUR CHOICE</h1>
+    <div class="loader"></div>
+    <p style="text-align:center;opacity:.7">Profile তৈরি হচ্ছে...</p>
   </div>
 
-
-  <div id="restoreScreen" class="screen hidden">
-    <button onclick="showScreen('authScreen')">← Back</button>
-    <h2>Restore Account</h2>
-    <input id="resName" placeholder="Name">
-    <input id="resPass" placeholder="Password">
-    <button onclick="restoreByPass()" style="width:100%">Show My Serial</button>
-    <hr style="margin:20px 0;border:1px solid #334155">
-    <input id="resSerial" placeholder="Enter Serial Number">
-    <button onclick="restoreBySerial()" style="width:100%;background:#10b981">Direct Login</button>
-  </div>
-
-
-  <div id="homeScreen" class="screen hidden">
+  <div id="homeScreen" class="screen hidden" style="justify-content:flex-start">
     <header>
-      <div onclick="openProfile()" style="cursor:pointer">
+      <div id="profileBtn" style="cursor:pointer">
         <img id="userDP" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Ccircle cx='20' cy='20' r='20' fill='%233b82f6'/%3E%3C/svg%3E" style="width:40px;height:40px;border-radius:50%;vertical-align:middle">
         <span id="userNameSerial" style="margin-left:8px;font-weight:bold"></span>
         <span id="coBadge" class="hidden">CO</span>
-        <div id="userRankScore" style="font-size:13px;opacity:0.8"></div>
+        <div id="userRankScore" style="font-size:13px;opacity:.8"></div>
       </div>
       <div style="text-align:right">
         <div>📢 <span id="latestNotice">Welcome</span></div>
-        <button onclick="toggleTheme()" style="padding:5px 10px;font-size:12px">🌙</button>
-        <button onclick="toggleBlueFilter()" style="padding:5px 10px;font-size:12px">🔵</button>
+        <button id="themeBtn" style="padding:5px 10px;font-size:12px">🌙</button>
       </div>
     </header>
     <div class="menu-grid">
-      <div onclick="showScreen('questScreen')">Quest</div>
-      <div onclick="showScreen('contactScreen')">Contact</div>
-      <div onclick="showScreen('gamesScreen')">Games</div>
-      <div onclick="showScreen('toolsScreen')">Tools</div>
-      <div onclick="showScreen('eventScreen')">Event</div>
-      <div onclick="showScreen('applicationScreen')">Application</div>
-      <div onclick="showScreen('knowledgeScreen')">Knowledge</div>
-      <div onclick="showScreen('literatureScreen')">Literature</div>
+      <div data-screen="questScreen">Quest</div>
+      <div data-screen="contactScreen">Contact</div>
+      <div data-screen="gamesScreen">Games</div>
+      <div data-screen="toolsScreen">Tools</div>
+      <div data-screen="eventScreen">Event</div>
+      <div data-screen="applicationScreen">Application</div>
+      <div data-screen="knowledgeScreen">Knowledge</div>
+      <div data-screen="literatureScreen">Literature</div>
     </div>
-    <button id="coPanelBtn" class="hidden" onclick="showScreen('coPanel')" style="width:100%;background:#ef4444;margin-top:20px">CO Panel</button>
+    <button id="coPanelBtn" class="hidden" style="width:100%;background:#ef4444;margin-top:20px">CO Panel</button>
   </div>
 
-
- <div id="gamesScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
-    <h2>Games</h2>
-    <div class="tab">
-      <button id="tabTTT" onclick="startGame('tictactoe')" class="active">TicTacToe -5</button>
-      <button id="tabDiag" onclick="startGame('diagonal')">Diagonal -5</button>
-      <button id="tabDice" onclick="startGame('dice')">Dice Roll -5</button>
-    </div>
-    <div id="gameArea"></div>
-    <div id="coAddGame" class="hidden">
-      <h3>CO: Add New Game</h3>
-      <input id="gameTitle" placeholder="Game Title">
-      <textarea id="gameCode" placeholder="Paste Full HTML/JS Code" rows="8"></textarea>
-      <input id="gameCost" type="number" placeholder="Score Cost" value="5">
-      <input id="gameWin" type="number" placeholder="Win Bonus" value="7">
-      <button onclick="addNewGame()">Add Game</button>
-      <div id="customGamesList"></div>
-    </div>
-  </div>
-
-
-  <div id="questScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
+  <div id="questScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
     <h2>Quest</h2>
-    <div class="tab">
-      <button onclick="loadQuest('mcq')" class="active">MCQ +2/-0.5</button>
-      <button onclick="loadQuest('vsaq')">VSAQ +3/-1</button>
-      <button onclick="loadQuest('break')">Break Hints +10/-2</button>
-      <button onclick="loadQuest('picture')">Picture +4/-1.5</button>
-      <button onclick="loadQuest('audio')">Audio +4/-1.5</button>
-      <button onclick="loadQuest('video')">Video +4/-1.5</button>
-      <button onclick="loadQuest('learning')">Learning +1/0</button>
-    </div>
     <div id="questList"></div>
   </div>
 
-
-  <div id="contactScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
-    <h2>Contact</h2>
-    <div class="tab">
-      <button onclick="contactTab('friends')" class="active">Friends</button>
-      <button onclick="contactTab('request')">Request</button>
-      <button onclick="contactTab('find')">Find User</button>
-      <button onclick="contactTab('anonymous')">Anonymous</button>
-    </div>
-    <div id="contactArea"></div>
+  <div id="gamesScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
+    <h2>Games</h2>
+    <div class="game-board tictactoe" id="gameBoard"></div>
+    <p style="text-align:center">TicTacToe - Demo Game</p>
   </div>
 
-
-  <div id="toolsScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
-    <h2>Tools - Offline/Online</h2>
+  <div id="toolsScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
+    <h2>Tools</h2>
     <div class="menu-grid">
-      <div onclick="openTool('calc')">Calculator</div>
-      <div onclick="openTool('chess')">Chess Clock</div>
-      <div onclick="openTool('countdown')">Countdown</div>
-      <div onclick="openTool('pdf')">PDF Viewer</div>
-      <div onclick="openTool('qr')">QR Scanner</div>
-      <div onclick="openTool('stopwatch')">Stopwatch</div>
+      <div onclick="alert('Calculator')">Calculator</div>
+      <div onclick="alert('Stopwatch')">Stopwatch</div>
+      <div onclick="alert('QR Scanner')">QR Scanner</div>
+      <div onclick="alert('PDF Viewer')">PDF Viewer</div>
     </div>
-    <div id="toolArea" style="margin-top:20px"></div>
   </div>
 
-
-  <div id="eventScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
-    <h2>Event / Live Quiz</h2>
-    <div id="eventList"></div>
+  <div id="contactScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
+    <h2>Contact</h2>
+    <p>Friends, Chat - Coming Soon</p>
   </div>
 
+  <div id="eventScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
+    <h2>Event</h2>
+    <p>Live Quiz - Coming Soon</p>
+  </div>
 
-  <div id="applicationScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
+  <div id="applicationScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
     <h2>Application</h2>
-    <div id="applicationList"></div>
-    <div id="coAppCreate" class="hidden">
-      <h3>CO: Create Application</h3>
-      <input id="appTitle" placeholder="Title">
-      <textarea id="appDesc" placeholder="Description"></textarea>
-      <input id="appLink" placeholder="Form Link/URL">
-      <input id="appDeadline" type="date">
-      <button onclick="saveApplication()">Create Application</button>
-    </div>
+    <p>Form List - Coming Soon</p>
   </div>
 
-
-  <div id="knowledgeScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
-    <h2>Knowledge - Auto Delete 30d</h2>
-    <div id="knowledgeList"></div>
+  <div id="knowledgeScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
+    <h2>Knowledge</h2>
+    <p>Posts - Coming Soon</p>
   </div>
 
-
-  <div id="literatureScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
+  <div id="literatureScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
     <h2>Literature</h2>
-    <div id="literatureList"></div>
-    <div id="coLitCreate" class="hidden">
-      <h3>CO: Create Literature</h3>
-      <input id="litTitle" placeholder="Title">
-      <textarea id="litContent" placeholder="Poem/Story/Quote" rows="6"></textarea>
-      <select id="litType"><option>Poem</option><option>Story</option><option>Quote</option></select>
-      <button onclick="saveLiterature()">Post Literature</button>
-    </div>
+    <p>Poem, Story - Coming Soon</p>
   </div>
 
-
-  <div id="profileScreen" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
+  <div id="profileScreen" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
     <h2>Profile</h2>
     <div id="profileData"></div>
-    <button onclick="editProfile()">Edit Profile</button>
-    <button onclick="changePassword()" style="background:#f59e0b">Change Password</button>
-    <button onclick="logout()" style="background:#ef4444">Logout</button>
+    <button id="logoutBtn" style="background:#ef4444;width:100%;margin-top:20px">Logout</button>
   </div>
 
-
-  <div id="coPanel" class="screen hidden">
-    <button onclick="showScreen('homeScreen')">← Back</button>
-    <h2>CO Panel - Full Control</h2>
-    <button onclick="coCreateQuest()" style="width:100%">+ Create Quest 7 Types</button>
-    <button onclick="coCreateEvent()" style="width:100%">+ Create Event/Live Quiz</button>
-    <button onclick="coCreateKnowledge()" style="width:100%">+ Create Knowledge</button>
-    <button onclick="coCreateApplication()" style="width:100%">+ Create Application</button>
-    <button onclick="coCreateLiterature()" style="width:100%">+ Create Literature</button>
-    <button onclick="coManageUsers()" style="width:100%;background:#f59e0b">Manage Users</button>
-    <button onclick="coPostNotice()" style="width:100%;background:#10b981">Post Notice</button>
-    <button onclick="coMakeCO()" style="width:100%;background:#8b5cf6">Make New CO</button>
-    <button onclick="coViewAnalytics()" style="width:100%;background:#06b6d4">View Analytics</button>
-    <div id="coArea" style="margin-top:20px"></div>
+  <div id="coPanel" class="screen hidden" style="justify-content:flex-start">
+    <button class="backBtn" data-target="homeScreen">← Back</button>
+    <h2>CO Panel</h2>
+    <p>CO Features - Coming Soon</p>
   </div>
-
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-  import { getDatabase, ref, set, get, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
-  import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
-
+  import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDbFaMS-WtEYho-rUG1b1YNnfcE44u3VXI",
@@ -267,149 +162,141 @@
     appId: "1:287190219191:web:71797e26ea4065f2521032"
   };
 
-
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
-  const storage = getStorage(app);
 
-
-  window.db = db; window.dbRef = ref; window.dbSet = set; window.dbGet = get;
-  window.dbPush = push; window.dbOnValue = onValue; window.dbRemove = remove; window.dbUpdate = update;
-  window.storage = storage; window.sRef = sRef; window.uploadBytes = uploadBytes; window.getDownloadURL = getDownloadURL;
-
-
-  if(sessionStorage.getItem('tabOpen')){
-    document.body.innerHTML = '<h1 style="text-align:center;margin-top:40vh">One Tab Only<br>Close other tabs</h1>';
-    throw new Error('Multiple tabs');
-  }
+  // No throw error - Bug fixed
   sessionStorage.setItem('tabOpen','true');
   window.addEventListener('beforeunload',()=>sessionStorage.removeItem('tabOpen'));
 
-
-  window.isOnline = navigator.onLine;
-  function updateNetStatus(){
-    window.isOnline = navigator.onLine;
-    document.getElementById('netStatus').className = window.isOnline? 'online' : 'offline';
-    document.getElementById('netStatus').innerText = window.isOnline? 'Online' : 'Offline';
+  let isOnline = navigator.onLine;
+  const updateNetStatus=()=>{
+    isOnline = navigator.onLine;
+    document.getElementById('netStatus').className = isOnline? 'online' : 'offline';
+    document.getElementById('netStatus').innerText = isOnline? 'Online' : 'Offline';
   }
-  window.addEventListener('online',()=>{updateNetStatus();syncOfflineScore();});
+  window.addEventListener('online',updateNetStatus);
   window.addEventListener('offline',updateNetStatus);
   updateNetStatus();
 
-
-  document.addEventListener('keyup',e=>{
-    if(e.key=='PrintScreen'){
-      document.body.style.filter='brightness(0)';
-      setTimeout(()=>document.body.style.filter='',100);
-    }
-  });
-  document.addEventListener('contextmenu',e=>e.preventDefault());
-  document.addEventListener('selectstart',e=>{if(e.target.tagName!=='INPUT'&&e.target.tagName!=='TEXTAREA')e.preventDefault()});
-
-
+  // Theme
   if(localStorage.getItem('theme')==='light')document.body.className='light';
-  window.toggleTheme=()=>{
+  document.getElementById('themeBtn').onclick=()=>{
     document.body.classList.toggle('dark');
     document.body.classList.toggle('light');
     localStorage.setItem('theme',document.body.className);
-    if(window.isOnline&&window.userSerial)window.dbUpdate(window.dbRef(window.db,'users/'+window.userSerial),{theme:document.body.className});
-  }
-  window.toggleBlueFilter=()=>document.body.classList.toggle('blue-filter');
-  let hour=new Date().getHours();
-  if(hour>=18||hour<6) document.body.classList.add('blue-filter');
-
-
-  window.currentUser=null; window.userScore=100; window.userSerial=''; window.isCO=false;
-
-
-  window.showScreen=(id)=>{document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));document.getElementById(id).classList.remove('hidden')}
-  window.enterApp=()=>showScreen('authScreen');
-  if(!sessionStorage.getItem('entered')){showScreen('entryScreen')}else{showScreen('authScreen')}
-  sessionStorage.setItem('entered','true');
-function saveOfflineScore(amount){
-    let localScore = parseInt(localStorage.getItem('offlineScore')||window.userScore);
-    localScore += amount;
-    localStorage.setItem('offlineScore',localScore);
-    if(window.currentUser)document.getElementById('userRankScore').innerText='Rank: '+window.currentUser.rank+' | Score: '+localScore+' [Offline]';
-  }
-  async function syncOfflineScore(){
-    let offlineScore = localStorage.getItem('offlineScore');
-    if(offlineScore && window.userSerial && window.isOnline){
-      await window.dbUpdate(window.dbRef(window.db,'users/'+window.userSerial),{score:parseInt(offlineScore)});
-      window.userScore = parseInt(offlineScore);
-      localStorage.removeItem('offlineScore');
-      alert('Offline Score Synced: '+offlineScore);
-      updateRank();
-    }
-  }
-  async function deductScore(amount){
-    if(window.isOnline&&window.userSerial){
-      window.userScore-=amount;
-      await window.dbUpdate(window.dbRef(window.db,'users/'+window.userSerial),{score:window.userScore});
-      await window.dbPush(window.dbRef(window.db,'users/'+window.userSerial+'/scoreLog'),{amount:-amount,reason:'Game/Quest',time:Date.now()});
-      document.getElementById('userRankScore').innerText='Rank: '+window.currentUser.rank+' | Score: '+window.userScore;
-      updateRank();
-    }else{
-      saveOfflineScore(-amount);
-    }
-  }
-  async function addScore(amount){
-    if(window.isOnline&&window.userSerial){
-      window.userScore+=amount;
-      await window.dbUpdate(window.dbRef(window.db,'users/'+window.userSerial),{score:window.userScore});
-      await window.dbPush(window.dbRef(window.db,'users/'+window.userSerial+'/scoreLog'),{amount:amount,reason:'Win/Quest',time:Date.now()});
-      document.getElementById('userRankScore').innerText='Rank: '+window.currentUser.rank+' | Score: '+window.userScore;
-      updateRank();
-    }else{
-      saveOfflineScore(amount);
-    }
-  }
-  function updateRank(){
-    let r='Beginner';
-    if(window.userScore>=200)r='Learner';if(window.userScore>=400)r='Expert';if(window.userScore>=700)r='Master';if(window.userScore>=1000)r='Legend';
-    window.currentUser.rank=r;
-    if(window.isOnline&&window.userSerial)window.dbUpdate(window.dbRef(window.db,'users/'+window.userSerial),{rank:r});
-    document.getElementById('userRankScore').innerText='Rank: '+r+' | Score: '+window.userScore+(window.isOnline?'':' [Offline]');
   }
 
-
-  function checkOnline(){
-    if(!window.isOnline){
-      alert('Internet Required for this feature');
-      return false;
-    }
-    return true;
+  let currentUser=null,userScore=100,userSerial='';
+  
+  const showScreen=(id)=>{
+    document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
   }
-  function genSerial(){return 'S'+Math.random().toString(36).substr(2,6).toUpperCase()}
-  window.signup=async()=>{
-    if(!checkOnline())return;
+
+  const genSerial=()=> 'S'+Math.random().toString(36).substr(2,6).toUpperCase();
+
+  // Auto Login Check
+  const savedSerial = localStorage.getItem('userSerial');
+  if(savedSerial){
+    showScreen('loadingScreen');
+    get(ref(db,'users/'+savedSerial)).then(snap=>{
+      if(snap.exists()){
+        currentUser=snap.val();
+        userSerial=savedSerial;
+        userScore=currentUser.score||100;
+        setTimeout(()=>loadHome(),500);
+      }else{
+        localStorage.removeItem('userSerial');
+        showScreen('nameScreen');
+      }
+    });
+  }else{
+    showScreen('nameScreen');
+  }
+
+  // Create Profile - Only Name
+  document.getElementById('continueBtn').onclick=async()=>{
+    const name = document.getElementById('userNameInput').value.trim();
+    if(!name){alert('নাম লেখো');return}
+    if(name.length<2){alert('নাম কমপক্ষে 2 অক্ষর');return}
+    
+    showScreen('loadingScreen');
+    userSerial = genSerial();
+    currentUser = {
+      name:name,
+      serial:userSerial,
+      score:100,
+      rank:'Beginner',
+      isCO:userSerial==='SADMIN1',
+      created:Date.now()
+    };
+    
     try{
-      if(!authName.value||!authPass.value||!authAge.value||!authGender.value||!authSchool.value||!authClass.value){alert('Fill all fields');return}
-      const serial=genSerial();
-      window.currentUser={name:authName.value,password:authPass.value,age:authAge.value,gender:authGender.value,school:authSchool.value,class:authClass.value,serial:serial,score:100,isCO:false,rank:'Beginner',banned:false,created:Date.now(),theme:document.body.className};
-      await window.dbSet(window.dbRef(window.db,'users/'+serial),window.currentUser);
-      alert('Signup Done! Your Serial: '+serial+'\nSave this for login');
-      loginSuccess(serial);
-    }catch(e){alert('Signup Error: '+e.message)}
+      await set(ref(db,'users/'+userSerial),currentUser);
+      localStorage.setItem('userSerial',userSerial);
+      setTimeout(()=>loadHome(),1000);
+    }catch(e){
+      alert('Error: '+e.message);
+      showScreen('nameScreen');
+    }
   }
-  window.login=async()=>{
-    if(!checkOnline())return;
-    try{
-      const snap=await window.dbGet(window.dbRef(window.db,'users'));
-      let found=false;
-      snap.forEach(child=>{
-        let u=child.val();
-        if(u.name===authName.value&&u.password===authPass.value){
-          if(u.banned){alert('You are Banned by CO');return}
-          window.currentUser=u;found=true;loginSuccess(u.serial);
-        }
-      });
-      if(!found)alert('Wrong Name/Password');
-    }catch(e){alert('Login Error: '+e.message)}
+
+  const loadHome=()=>{
+    document.getElementById('userNameSerial').innerText=currentUser.name+'#'+userSerial;
+    document.getElementById('userRankScore').innerText='Rank: '+currentUser.rank+' | Score: '+userScore;
+    if(currentUser.isCO){
+      document.getElementById('coBadge').classList.remove('hidden');
+      document.getElementById('coPanelBtn').classList.remove('hidden');
+    }
+    showScreen('homeScreen');
   }
-  window.loginSuccess=(serial)=>{
-    window.userSerial=serial;window.userScore=window.currentUser.score||100;window.isCO=window.currentUser.isCO||false;
-    if(window.currentUser.theme)localStorage.setItem('theme',window.currentUser.theme);
-    if(localStorage.getItem('theme')==='light')document.body.className='light';
-    document.getElementById('userNameSerial').innerText=window.currentUser.name+'#'+serial;
-    document
+
+  // Navigation
+  document.querySelectorAll('[data-screen]').forEach(el=>{
+    el.onclick=()=>showScreen(el.dataset.screen);
+  });
+  document.querySelectorAll('.backBtn').forEach(btn=>{
+    btn.onclick=()=>showScreen(btn.dataset.target);
+  });
+  document.getElementById('coPanelBtn').onclick=()=>showScreen('coPanel');
+  document.getElementById('profileBtn').onclick=()=>{
+    document.getElementById('profileData').innerHTML=`
+      <p><b>Name:</b> ${currentUser.name}</p>
+      <p><b>Serial:</b> ${userSerial}</p>
+      <p><b>Rank:</b> ${currentUser.rank}</p>
+      <p><b>Score:</b> ${userScore}</p>
+    `;
+    showScreen('profileScreen');
+  }
+  document.getElementById('logoutBtn').onclick=()=>{
+    localStorage.removeItem('userSerial');
+    location.reload();
+  }
+
+  // Demo Quest
+  document.getElementById('questList').innerHTML=`
+    <div class="quest-card">
+      <b>Demo MCQ:</b> 2+2=? <br>
+      <button onclick="alert('+2 Score')">A) 4</button>
+      <button onclick="alert('-0.5 Score')">B) 5</button>
+    </div>
+  `;
+
+  // Demo Game
+  let gameState=['','','','','','','','',''];
+  const board=document.getElementById('gameBoard');
+  for(let i=0;i<9;i++){
+    const cell=document.createElement('div');
+    cell.className='cell';
+    cell.onclick=()=>{
+      if(gameState[i])return;
+      gameState[i]='X';
+      cell.innerText='X';
+    }
+    board.appendChild(cell);
+  }
+
+</script>
+</body>
+</html>
