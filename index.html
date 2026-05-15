@@ -233,18 +233,16 @@ window.login = async function(){
   
   toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
   try {
-    // সুরক্ষিত ও অনুমান-অযোগ্য মিক্সড আলফানিউমেরিক ক্যারেক্টার সেট (কনফিউজিং ক্যারেক্টার O, o, 1, l বাদে)
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
     let randomPart = "";
     for(let i = 0; i < 6; i++) {
       randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     
-    // ৯ ক্যারেক্টারের মিক্সড সুরক্ষিত সিরিয়াল আইডি (যেমন: YC_m8K3pQ)
     const generatedSerial = "YC_" + randomPart;
     
     currentUser = {
-      name, 
+      name: name, 
       serial: generatedSerial,
       isCO: false, score: 0, rank: 0,
       createdAt: Date.now(), lastActive: Date.now()
@@ -659,6 +657,17 @@ window.logoutWithNotice = function(){
     renderAuth();
     toast('সফলভাবে লগআউট করা হয়েছে!');
   }
+}
+
+// ==== INITIALIZE APP ====
+const localUser = localStorage.getItem(STORAGE_KEY);
+if(localUser){
+  currentUser = JSON.parse(localUser);
+  renderHome();
+  checkTabLock();
+  checkBlueLight();
+} else {
+  renderAuth();
 }
 </script>
 </body>
