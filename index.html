@@ -126,6 +126,10 @@ header{
   background:rgba(255,140,0,0.15);
   pointer-events:none;z-index:999;display:none;
 }
+.switch-link{
+  display:block;text-align:center;margin-top:15px;color:var(--accent);
+  font-size:13px;text-decoration:underline;cursor:pointer;
+}
 </style>
 </head>
 <body>
@@ -151,7 +155,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Global Setup
 window.db = db; window.ref = ref; window.set = set; window.get = get; window.push = push; 
 window.onValue = onValue; window.update = update; window.remove = remove; window.query = query; 
 window.orderByChild = orderByChild; window.runTransaction = runTransaction;
@@ -172,7 +175,6 @@ function toast(msg){
 }
 window.toast = toast;
 
-// Tab Lock & Utilities
 function checkTabLock(){
   const tabId = sessionStorage.getItem(TAB_KEY) || Math.random().toString(36);
   sessionStorage.setItem(TAB_KEY, tabId);
@@ -192,63 +194,101 @@ function checkBlueLight(){
 }
 
 function isValidURL(url){
-  try{
-    const u = new URL(url);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  }catch{return false}
+  try{ const u = new URL(url); return u.protocol === 'http:' || u.protocol === 'https:'; }catch{return false}
 }
 
-// ==== AUTH SYSTEM ====
+// ==== AUTH & ACCOUNT RECOVERY SYSTEM ====
 function renderAuth(){
   $('app').innerHTML = `
     <div class="screen active" id="auth">
-      <div class="card" style="margin-top:60px">
+      <div class="card" style="margin-top:60px" id="authCard">
         <h2 style="text-align:center;margin-bottom:20px">YourChoice</h2>
         <input type="text" class="input" id="name" placeholder="তোমার নাম">
-        <input type="text" class="input" id="serial" placeholder="Serial No">
-        <input type="text" class="input" id="school" placeholder="School">
-        <select class="input" id="role">
-          <option value="student">Student</option>
-          <option value="teacher">Teacher</option>
-        </select>
         <button class="btn" onclick="login()">Login / Register</button>
+        <span class="switch-link" onclick="toggleAuthMode(true)">পুরনো অ্যাকাউন্ট রিকভার করো (Recovery)</span>
       </div>
     </div>
   `;
 }
 
+window.toggleAuthMode = function(isRecovery){
+  const card = $('authCard');
+  if(isRecovery){
+    card.innerHTML = `
+      <h2 style="text-align:center;margin-bottom:20px">Account Recovery</h2>
+      <p style="font-size:12px; color:var(--muted); text-align:center; margin-bottom:10px;">তোমার পুরনো সিরিয়াল নাম্বারটি নিচে বসাও</p>
+      <input type="text" class="input" id="recoverySerial" placeholder="Old Serial No">
+      <button class="btn" onclick="recoverAccount()">Recover Account</button>
+      <span class="switch-link" onclick="renderAuth()">নতুন অ্যাকাউন্ট তৈরি করো (Login)</span>
+    `;
+  }
+}
+
 window.login = async function(){
   const name = $('name').value.trim();
-  const serial = $('serial').value.trim();
-  const school = $('school').value.trim();
-  const role = $('role').value;
-  
-  if(!name || !serial || !school){
-    toast('সব ফিল্ড পূরণ করো');
+  if(!name){
+    toast('নতুন অ্যাকাউন্ট তৈরির জন্য নাম অবশ্যই লিখতে হবে');
     return;
   }
   
-  const userRef = ref(db, 'users/' + serial);
-  const snap = await get(userRef);
-  
-  if(snap.exists()){
-    currentUser = snap.val();
-  }else{
+  toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
+  try {
+    // সুরক্ষিত ও অনুমান-অযোগ্য মিক্সড আলফানিউমেরিক ক্যারেক্টার সেট (কনফিউজিং ক্যারেক্টার O, o, 1, l বাদে)
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    let randomPart = "";
+    for(let i = 0; i < 6; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    // ৯ ক্যারেক্টারের মিক্সড সুরক্ষিত সিরিয়াল আইডি (যেমন: YC_m8K3pQ)
+    const generatedSerial = "YC_" + randomPart;
+    
     currentUser = {
-      name, serial, school, role,
-      isCO: false,
-      score: 0,
-      rank: 0,
-      createdAt: Date.now(),
-      lastActive: Date.now()
+      name, 
+      serial: generatedSerial,
+      isCO: false, score: 0, rank: 0,
+      createdAt: Date.now(), lastActive: Date.now()
     };
-    await set(userRef, currentUser);
+    
+    await set(ref(db, 'users/' + generatedSerial), currentUser);
+    toast('রেজিস্ট্রেশন সফল হয়েছে!');
+    
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
+    renderHome();
+    checkTabLock();
+    checkBlueLight();
+  } catch(e) {
+    console.error(e);
+    toast('কানেকশন এরর!');
+  }
+}
+
+window.recoverAccount = async function(){
+  const serial = $('recoverySerial').value.trim();
+  if(!serial){
+    toast('সিরিয়াল নাম্বার দেওয়া বাধ্যতামূলক');
+    return;
   }
   
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-  renderHome();
-  checkTabLock();
-  checkBlueLight();
+  toast('অ্যাকাউন্ট খোঁজা হচ্ছে...');
+  try {
+    const userRef = ref(db, 'users/' + serial);
+    const snap = await get(userRef);
+    
+    if(snap.exists()){
+      currentUser = snap.val();
+      toast('স্বাগতম ফিরে আসার জন্য, ' + currentUser.name);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
+      renderHome();
+      checkTabLock();
+      checkBlueLight();
+    } else {
+      toast('এই সিরিয়াল নাম্বারের কোনো অ্যাকাউন্ট পাওয়া যায়নি!');
+    }
+  } catch(e) {
+    console.error(e);
+    toast('কানেকশন এরর!');
+  }
 }
 
 // ==== HOME SCREEN ====
@@ -261,7 +301,7 @@ function renderHome(){
       <div class="header-top">
         <div class="profile-info">
           <span>${u.name}</span>
-          <span class="serial">S:${u.serial}</span>
+          <span class="serial" title="ফায়ারবেস দ্বারা সংরক্ষিত সিরিয়াল">S:${u.serial}</span>
           <span class="rank">Rank:${u.rank || 0}</span>
         </div>
         <span class="network-dot" id="netDot"></span>
@@ -286,18 +326,16 @@ function renderHome(){
     <div class="bottom-nav">
       <button class="bottom-nav-btn active" onclick="renderHome()">Home</button>
       <button class="bottom-nav-btn" onclick="showCOPanel()">CO Panel</button>
-      <button class="bottom-nav-btn" onclick="logout()">Logout</button>
+      <button class="bottom-nav-btn" onclick="logoutWithNotice()">Logout</button>
     </div>
   `;
   
   updateNetworkStatus();
   loadNotice();
   checkCOSetup();
-  loadCustomContent();
 }
 window.renderHome = renderHome;
 
-// Network Status
 function updateNetworkStatus(){
   const dot = $('netDot');
   if(!dot) return;
@@ -345,431 +383,150 @@ function loadQuests(){
           </div>
         `;
       });
-    }else{
-      html += '<div class="card">No quests yet. CO will add soon!</div>';
-    }
-    const qList = $('questList');
-    if(qList) qList.innerHTML = html;
+    }else{ html += '<div class="card">No quests yet!</div>'; }
+    const qList = $('questList'); if(qList) qList.innerHTML = html;
   });
 }
 
 window.startQuest = async function(id){
-  const snap = await get(ref(db, 'quests/' + id));
-  if(!snap.exists()) return;
+  const snap = await get(ref(db, 'quests/' + id)); if(!snap.exists()) return;
   const q = snap.val();
-  
   const ansSnap = await get(ref(db, 'quest_answers/' + currentUser.serial + '/' + id));
   const alreadyAnswered = ansSnap.exists();
-  const prevAns = alreadyAnswered ? ansSnap.val().answer : null;
   
   let contentHTML = '';
   if(q.type === 'picture'){
-    contentHTML = isValidURL(q.question) 
-      ? `<img src="${q.question}" onerror="this.style.display='none'" style="width:100%;max-height:300px;object-fit:contain;border-radius:8px;margin:10px 0">`
-      : '<div style="color:var(--accent2)">Invalid image URL</div>';
-  }else if(['audio','video','learning'].includes(q.type)){
-    contentHTML = isValidURL(q.question)
-      ? `<a href="${q.question}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all">Open Link</a>`
-      : '<div style="color:var(--accent2)">Invalid URL</div>';
-  }else{
-    contentHTML = `<h3 style="margin:10px 0">${q.question}</h3>`;
-  }
+    contentHTML = isValidURL(q.question) ? `<img src="${q.question}" style="width:100%;max-height:300px;object-fit:contain;border-radius:8px;margin:10px 0">` : 'Invalid Image';
+  }else{ contentHTML = `<h3 style="margin:10px 0">${q.question}</h3>`; }
   
   let answerHTML = '';
   if(alreadyAnswered){
-    answerHTML = `
-      <div class="card" style="background:#1a1a1a;margin-top:10px">
-        <div style="color:var(--muted)">Your Answer:</div>
-        <div>${prevAns}</div>
-        <div style="color:var(--accent);margin-top:8px">Score: ${ansSnap.val().score}</div>
-        <div style="color:var(--muted);font-size:12px">Review mode. Cannot change answer.</div>
-      </div>
-    `;
+    answerHTML = `<div class="card">Your Answer: ${ansSnap.val().answer} (Score: ${ansSnap.val().score})</div>`;
   }else{
     if(q.type === 'mcq'){
-      q.options.forEach((opt)=>{
-        answerHTML += `<button class="btn btn-secondary" style="margin-top:5px" onclick="submitQuestAnswer('${id}','${opt}')">${opt}</button>`;
-      });
+      q.options.forEach(opt=>{ answerHTML += `<button class="btn btn-secondary" style="margin-top:5px" onclick="submitQuestAnswer('${id}','${opt}')">${opt}</button>`; });
     }else if(q.type === 'break_hint'){
-      answerHTML = `
-        <div id="hintBox" style="margin:10px 0;color:var(--accent);font-size:12px"></div>
-        <input class="input" id="qAns" placeholder="Final Answer">
-        <button class="btn" onclick="unlockBreakHint('${id}')">Get Hint (<span id="hintPoints">10</span> pts)</button>
-        <button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>
-      `;
-      window.hintStep = 0;
-      window.hintList = q.hints ? q.hints.split('|') : [];
+      answerHTML = `<div id="hintBox" style="color:var(--accent);font-size:12px"></div><input class="input" id="qAns" placeholder="Answer"><button class="btn" onclick="unlockBreakHint('${id}')">Hint (<span id="hintPoints">10</span> pts)</button><button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>`;
+      window.hintStep = 0; window.hintList = q.hints ? q.hints.split('|') : [];
     }else{
-      answerHTML = `<input class="input" id="qAns" placeholder="Type your answer">
-                    <button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>`;
+      answerHTML = `<input class="input" id="qAns" placeholder="Type answer"><button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>`;
     }
   }
-  
-  $('app').innerHTML = `
-    <div class="screen active" id="questPlay">
-      <header><button onclick="showQuest()" style="background:none;border:none;color:var(--accent)">← Back</button></header>
-      <div class="main-content">
-        <div class="card">
-          <div style="color:var(--muted);font-size:12px">${q.type.toUpperCase()}</div>
-          ${contentHTML}
-          ${answerHTML}
-        </div>
-      </div>
-    </div>
-  `;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="showQuest()" style="background:none;border:none;color:var(--accent)">← Back</button></header><div class="main-content"><div class="card">${contentHTML}${answerHTML}</div></div></div>`;
 }
 
 window.unlockBreakHint = function(id){
-  if(window.hintStep >= 10) return toast('Max 10 hints reached!');
-  const points = 10 - window.hintStep;
-  const hBox = $('hintBox');
-  if(hBox) hBox.innerHTML += `<div>Hint ${window.hintStep+1}: ${window.hintList[window.hintStep] || 'No hint'}</div>`;
-  const hPoints = $('hintPoints');
-  if(hPoints) hPoints.textContent = Math.max(1, points - 1);
+  if(window.hintStep >= 10) return toast('No more hints!');
+  $('hintBox').innerHTML += `<div>Hint ${window.hintStep+1}: ${window.hintList[window.hintStep] || 'None'}</div>`;
   window.hintStep++;
-  toast('-2 points for hint logic');
 }
 
 window.submitQuestAnswer = async function(id, ans){
-  const qSnap = await get(ref(db, 'quests/' + id));
-  const q = qSnap.val();
-  
-  const checkSnap = await get(ref(db, 'quest_answers/' + currentUser.serial + '/' + id));
-  if(checkSnap.exists()) return toast('Already answered!');
-  
-  let earnedScore = 0;
-  let isCorrect = ans.toLowerCase().trim() === (q.coAnswer || q.answer).toLowerCase().trim();
-  
-  if(q.type === 'break_hint'){
-    const hintUsed = window.hintStep || 0;
-    if(isCorrect){ earnedScore = Math.max(1, 10 - hintUsed); }
-    else { earnedScore = hintUsed >= 10 ? -3 : 0; }
-  } else {
-    earnedScore = isCorrect ? q.points : -Math.abs(q.points);
-  }
-  
-  await set(ref(db, 'quest_answers/' + currentUser.serial + '/' + id), {
-    answer: ans, correct: isCorrect, score: earnedScore, time: Date.now()
-  });
-  
-  const newScore = (currentUser.score || 0) + earnedScore;
-  await update(ref(db, 'users/' + currentUser.serial), {score: newScore});
-  currentUser.score = newScore;
+  const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
+  let isCorrect = ans.toLowerCase().trim() === (q.coAnswer || q.answer || '').toLowerCase().trim();
+  let score = isCorrect ? q.points : -5;
+  await set(ref(db, 'quest_answers/' + currentUser.serial + '/' + id), { answer: ans, score: score });
+  currentUser.score = (currentUser.score || 0) + score;
+  await update(ref(db, 'users/' + currentUser.serial), { score: currentUser.score });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-  
-  toast(isCorrect ? `Correct! +${earnedScore}` : `Wrong! ${earnedScore}`);
+  toast(isCorrect ? 'Correct!' : 'Wrong!');
   showQuest();
 }
 
 // ==== CONTACT & CHAT SYSTEM ====
 window.showContact = function(){
-  $('app').innerHTML = `
-    <div class="screen active" id="contact">
-      <header>
-        <div class="header-top">
-          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-          <span>Contact</span>
-          <button onclick="showFindUser()" style="background:none;border:none;color:var(--accent)">+ Add</button>
-        </div>
-      </header>
-      <div class="main-content">
-        <div class="card"><h3>Friends</h3><div id="friendList">Loading...</div></div>
-        <div class="card"><h3>Friend Requests</h3><div id="reqList">Loading...</div></div>
-      </div>
-    </div>
-  `;
-  loadFriends();
-  loadRequests();
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Contact</span><button onclick="showFindUser()" style="background:none;border:none;color:var(--accent)">+ Add</button></header><div class="main-content"><div class="card"><h3>Friends</h3><div id="friendList"></div></div><div class="card"><h3>Requests</h3><div id="reqList"></div></div></div></div>`;
+  loadFriends(); loadRequests();
 }
-
 function loadFriends(){
   onValue(ref(db, 'friends/' + currentUser.serial), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.keys(data).forEach(fid=>{
-        html += `<div class="card" style="padding:10px;margin:8px 0" onclick="openChat('${fid}')">
-          <span>👤 ${fid}</span>
-          <button class="btn-secondary" style="float:right;padding:4px 10px;font-size:12px" 
-            onclick="event.stopPropagation();sendBattleReq('${fid}')">Battle</button>
-        </div>`;
-      });
-    }else html = '<div style="color:var(--muted)">No friends yet</div>';
-    const flist = $('friendList');
-    if(flist) flist.innerHTML = html;
+    let html = ''; if(snap.exists()){ Object.keys(snap.val()).forEach(fid=>{ html += `<div class="card" onclick="openChat('${fid}')">👤 ${fid}</div>`; }); } else html = 'No friends';
+    if($('friendList')) $('friendList').innerHTML = html;
   });
 }
-
 function loadRequests(){
   onValue(ref(db, 'requests/' + currentUser.serial), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).forEach(([from,status])=>{
-        if(status === 'pending'){
-          html += `<div class="card" style="padding:10px;margin:8px 0">
-            <span>${from}</span>
-            <button class="btn" style="float:right;width:auto;padding:4px 12px" onclick="acceptReq('${from}')">Accept</button>
-          </div>`;
-        }
-      });
-    }else html = '<div style="color:var(--muted)">No requests</div>';
-    const rlist = $('reqList');
-    if(rlist) rlist.innerHTML = html;
+    let html = ''; if(snap.exists()){ Object.keys(snap.val()).forEach(from=>{ html += `<div class="card">${from} <button class="btn" style="width:auto;padding:4px 8px" onclick="acceptReq('${from}')">Accept</button></div>`; }); } else html = 'No requests';
+    if($('reqList')) $('reqList').innerHTML = html;
   });
 }
-
 window.showFindUser = function(){
-  $('app').innerHTML = `
-    <div class="screen active" id="findUser">
-      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Find User</span></header>
-      <div class="main-content">
-        <input class="input" id="findSerial" placeholder="Enter Serial No">
-        <button class="btn" onclick="sendFriendReq()">Send Request</button>
-      </div>
-    </div>
-  `;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button></header><div class="main-content"><input class="input" id="findSerial" placeholder="Serial No"><button class="btn" onclick="sendFriendReq()">Add Friend</button></div></div>`;
 }
-
 window.sendFriendReq = async function(){
-  const serial = $('findSerial').value.trim();
-  if(!serial || serial === currentUser.serial) return toast('Invalid serial');
-  const snap = await get(ref(db, 'users/' + serial));
-  if(!snap.exists()) return toast('User not found');
-  await set(ref(db, 'requests/' + serial + '/' + currentUser.serial), 'pending');
-  toast('Request sent!');
-  showContact();
+  const s = $('findSerial').value.trim(); if(!s || s===currentUser.serial) return toast('Invalid');
+  await set(ref(db, 'requests/' + s + '/' + currentUser.serial), 'pending'); toast('Sent!'); showContact();
 }
-
 window.acceptReq = async function(from){
   await set(ref(db, 'friends/' + currentUser.serial + '/' + from), true);
   await set(ref(db, 'friends/' + from + '/' + currentUser.serial), true);
-  await remove(ref(db, 'requests/' + currentUser.serial + '/' + from));
-  toast('Friend added!');
+  await remove(ref(db, 'requests/' + currentUser.serial + '/' + from)); showContact();
 }
-
 window.openChat = function(fid){
   const chatId = [currentUser.serial, fid].sort().join('_');
-  $('app').innerHTML = `
-    <div class="screen active" id="chat">
-      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button><span>${fid}</span></header>
-      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;padding-bottom:20px"></div>
-      <div style="position:fixed;bottom:0;left:0;right:0;padding:10px;background:var(--card);display:flex;gap:8px">
-        <input class="input" id="chatInput" placeholder="Type message" style="margin:0">
-        <button class="btn" onclick="sendMsg('${chatId}','${fid}')" style="width:auto;margin:0">Send</button>
-      </div>
-    </div>
-  `;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button><span>${fid}</span></header><div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto"></div><div style="position:fixed;bottom:0;left:0;right:0;padding:10px;background:var(--card);display:flex;gap:8px"><input class="input" id="chatInput" placeholder="Message" style="margin:0"><button class="btn" onclick="sendMsg('${chatId}','${fid}')" style="width:auto;margin:0">Send</button></div></div>`;
   onValue(ref(db, 'chats/' + chatId), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).forEach(([msgId,m])=>{
-        html += `<div style="margin:8px 0;text-align:${m.from===currentUser.serial?'right':'left'}"
-          oncontextmenu="event.preventDefault();if('${m.from}'==='${currentUser.serial}')deleteMsg('${chatId}','${msgId}')">
-          <span style="background:${m.from===currentUser.serial?'var(--accent)':'var(--border)'};padding:8px 12px;border-radius:12px;display:inline-block;max-width:70%">${m.text}</span>
-        </div>`;
-      });
-    }
-    const cBox = $('chatBox');
-    if(cBox) {
-      cBox.innerHTML = html;
-      cBox.scrollTop = cBox.scrollHeight;
-    }
+    let html = ''; if(snap.exists()){ Object.values(snap.val()).forEach(m=>{ html += `<div style="text-align:${m.from===currentUser.serial?'right':'left'};margin:5px"><span style="background:var(--border);padding:6px 12px;border-radius:8px;display:inline-block">${m.text}</span></div>`; }); }
+    if($('chatBox')){ $('chatBox').innerHTML = html; $('chatBox').scrollTop = $('chatBox').scrollHeight; }
   });
 }
-
-window.sendMsg = async function(chatId,fid){
-  const txt = $('chatInput').value.trim();
-  if(!txt) return;
-  const lower = txt.toLowerCase();
-  if(lower.includes('<img') || lower.includes('<video') || lower.includes('<audio') || 
-     lower.includes('data:image') || lower.includes('.mp4') || lower.includes('.mp3') ||
-     lower.includes('.jpg') || lower.includes('.png') || lower.includes('.jpeg')){
-    return toast('Only text messages allowed!');
-  }
-  await push(ref(db, 'chats/' + chatId), {
-    from: currentUser.serial, to: fid, text: txt, time: Date.now()
-  });
+window.sendMsg = async function(chatId, fid){
+  const txt = $('chatInput').value.trim(); if(!txt) return;
+  await push(ref(db, 'chats/' + chatId), { from: currentUser.serial, text: txt, time: Date.now() });
   $('chatInput').value = '';
-}
-
-window.deleteMsg = async function(chatId, msgId){
-  if(confirm('Delete this message?')){ await remove(ref(db,'chats/'+chatId+'/'+msgId)); }
 }
 
 // ==== BATTLE SYSTEM ====
 window.showBattle = function(){
-  $('app').innerHTML = `
-    <div class="screen active" id="battle">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Online Battle</span></header>
-      <div class="main-content">
-        <div class="card"><h3>Pending Requests</h3><div id="battleReqs">Loading...</div></div>
-        <div class="card" id="gameBoard" style="display:none">
-          <h3 id="gameTurn"></h3>
-          <div id="ticGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0"></div>
-        </div>
-      </div>
-    </div>
-  `;
-  loadBattleReqs();
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Battle</span></header><div class="main-content"><div class="card">No Active Live Battles.</div></div></div>`;
 }
 
-window.sendBattleReq = async function(fid){
-  await set(ref(db, 'battles/' + fid + '/' + currentUser.serial), {
-    from: currentUser.serial, status: 'pending', time: Date.now()
-  });
-  toast('Battle request sent!');
-}
-
-function loadBattleReqs(){
-  onValue(ref(db, 'battles/' + currentUser.serial), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).forEach(([from,req])=>{
-        if(req.status === 'pending'){
-          html += `<div class="card" style="padding:10px">
-            <span>From: ${from}</span>
-            <button class="btn" style="width:auto;float:right;padding:4px 12px" onclick="acceptBattle('${from}')">Accept</button>
-          </div>`;
-        }else if(req.status === 'accepted'){
-          html += `<button class="btn" onclick="startGame('${from}')">Join Game with ${from}</button>`;
-        }
-      });
-    }else html = '<div style="color:var(--muted)">No requests</div>';
-    const bReqs = $('battleReqs');
-    if(bReqs) bReqs.innerHTML = html;
-  });
-}
-
-window.acceptBattle = async function(from){
-  await update(ref(db, 'battles/' + currentUser.serial + '/' + from), {status:'accepted'});
-  await update(ref(db, 'battles/' + from + '/' + currentUser.serial), {status:'accepted'});
-  await remove(ref(db, 'battles/' + currentUser.serial + '/' + from));
-  toast('Battle accepted!');
-  startGame(from);
-}
-
-window.startGame = function(opponent){
-  const gameId = [currentUser.serial, opponent].sort().join('_');
-  const gBoard = $('gameBoard');
-  if(gBoard) gBoard.style.display = 'block';
-
-  const grid = Array(9).fill('');
-  onValue(ref(db, 'games/' + gameId), snap=>{
-    const data = snap.val();
-    if(data){
-      grid.splice(0,9,...data.board);
-      renderGrid(grid, gameId, data.turn, opponent);
-    }
-  });
-
-  get(ref(db, 'games/' + gameId)).then(snap => {
-    if(!snap.exists()){
-      set(ref(db, 'games/' + gameId), {
-        board: grid, turn: currentUser.serial, players: [currentUser.serial, opponent]
-      });
-    }
-  });
-}
-
-function renderGrid(board, gameId, turn, opponent){
-  let html = '';
-  board.forEach((cell,i)=>{
-    html += `<button style="aspect-ratio:1;font-size:32px;background:var(--border);border:none;border-radius:8px;color:var(--text)"
-      onclick="makeMove('${gameId}',${i})" ${cell || turn !== currentUser.serial ? 'disabled' : ''}>${cell}</button>`;
-  });
-  const tGrid = $('ticGrid');
-  if(tGrid) tGrid.innerHTML = html;
-  const gTurn = $('gameTurn');
-  if(gTurn) gTurn.textContent = turn === currentUser.serial ? 'Your Turn' : 'Opponent Turn';
-
-  const winner = checkWinner(board);
-  if(winner){
-    toast(winner === 'X' ? 'Game Ended!' : 'Over!');
-    remove(ref(db, 'games/' + gameId));
-  }
-}
-
-window.makeMove = async function(gameId, i){
-  const gameRef = ref(db, 'games/' + gameId);
-  await runTransaction(gameRef, (game)=>{
-    if(!game) return game;
-    if(game.board[i] || game.turn !== currentUser.serial) return game;
-    game.board[i] = currentUser.serial === game.players[0] ? 'X' : 'O';
-    game.turn = game.players.find(p => p !== currentUser.serial);
-    return game;
-  });
-}
-
-function checkWinner(b){
-  const w=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-  for(let [a,c,e] of w){ if(b[a] && b[a]===b[c] && b[a]===b[e]) return b[a]; }
-  return null;
-}
-
-// ==== GAMES & TOOLS SYSTEM ====
+// ==== DYNAMIC GAMES SYSTEM ====
 window.showGames = function(){
   $('app').innerHTML = `
-    <div class="screen active" id="games">
+    <div class="screen active">
       <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Games</span></header>
       <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="playTicVsComp()"><div class="icon">🤖</div><div class="label">VS Computer</div></div>
-          <div class="nav-btn" onclick="playDice()"><div class="icon">🎲</div><div class="label">Dice</div></div>
-        </div>
+        <div class="nav-grid" id="gamesGrid"></div>
         <div id="gameArea" style="margin-top:20px"></div>
       </div>
     </div>
   `;
+  loadDynamicContent('custom_games', 'gamesGrid');
 }
 
-window.playTicVsComp = function(){
-  let board = Array(9).fill('');
-  let turn = 'X';
-  function render(){
-    let html = '<h3>VS Computer</h3><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0">';
-    board.forEach((c,i)=>{
-      html += `<button style="aspect-ratio:1;font-size:32px;background:var(--border);border:none;border-radius:8px;color:var(--text)" onclick="compMove(${i})" ${c?'disabled':''}>${c}</button>`;
-    });
-    html += '</div>';
-    $('gameArea').innerHTML = html;
-  }
-  window.compMove = function(i){
-    if(board[i] || turn!=='X') return;
-    board[i]='X'; render();
-    setTimeout(()=>{
-      let empty = board.map((v,j)=>v?'':j).filter(x=>x!=='');
-      if(empty.length){
-        board[empty[Math.floor(Math.random()*empty.length)]]='O';
-        turn='X'; render();
-      }
-    },500);
-  };
-  render();
-}
-
-window.playDice = function(){
-  let d1 = Math.floor(Math.random()*6)+1;
-  $('gameArea').innerHTML = `<h3>Dice Roll</h3><div style="font-size:60px;text-align:center;margin:20px 0">🎲 ${d1}</div><button class="btn" onclick="playDice()">Roll</button>`;
-}
-
+// ==== DYNAMIC TOOLS SYSTEM ====
 window.showTools = function(){
   $('app').innerHTML = `
-    <div class="screen active" id="tools">
+    <div class="screen active">
       <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Tools</span></header>
       <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="toolQR()"><div class="icon">📱</div><div class="label">QR Generator</div></div>
-        </div>
+        <div class="nav-grid" id="toolsGrid"></div>
         <div id="toolArea" style="margin-top:20px"></div>
       </div>
     </div>
   `;
+  loadDynamicContent('custom_tools', 'toolsGrid');
 }
-window.toolQR = function(){
-  $('toolArea').innerHTML = `<h3>QR Generator</h3><input class="input" id="qrText" placeholder="Enter URL"><button class="btn" onclick="$('qrImg').src='https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent($('qrText').value)">Generate</button><img id="qrImg" style="display:block;margin:20px auto">`;
+
+function loadDynamicContent(node, gridId){
+  get(ref(db, node)).then(snap=>{
+    const grid = $(gridId);
+    if(!grid) return;
+    
+    if(snap.exists()){
+      grid.innerHTML = ''; 
+      Object.entries(snap.val()).forEach(([id, item])=>{
+        const btn = document.createElement('div');
+        btn.className = 'nav-btn';
+        btn.innerHTML = `<div class="icon">${item.icon || '⚙️'}</div><div class="label">${item.name}</div>`;
+        btn.onclick = () => { try { eval(item.code); } catch(e) { alert('কোডে ভুল আছে: ' + e.message); } };
+        grid.appendChild(btn);
+      });
+    } else {
+      grid.innerHTML = '<div style="color:var(--muted); font-size:14px; grid-column: span 3; text-align:center; padding: 20px;">কোনো কন্টেন্ট নেই। CO প্যানেল থেকে অ্যাড করুন।</div>';
+    }
+  });
 }
 
 // ==== KNOWLEDGE, LITERATURE, EVENTS ====
@@ -779,43 +536,26 @@ window.showKnowledge = function(){ displayContentScreen('knowledge', 'Knowledge'
 window.showLiterature = function(){ displayContentScreen('literature', 'Literature'); }
 
 function displayContentScreen(type, title){
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>${title}</span></header>
-      <div class="main-content" id="contentList">Loading...</div>
-    </div>
-  `;
-  loadContentData(type);
-}
-
-function loadContentData(type){
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>${title}</span></header><div class="main-content" id="contentList">Loading...</div></div>`;
   onValue(ref(db, type), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).reverse().forEach(([id,c])=>{
-        if(!c.deleteTime || Date.now() < c.deleteTime){
-          html += `<div class="card"><h3>${c.title}</h3><p>${c.desc}</p></div>`;
-        }
-      });
-    }else html = '<div class="card">No content yet</div>';
-    const cList = $('contentList');
-    if(cList) cList.innerHTML = html;
+    let html = ''; if(snap.exists()){ Object.values(snap.val()).forEach(c=>{ html += `<div class="card"><h3>${c.title}</h3><p>${c.desc}</p></div>`; }); } else html = 'No data';
+    if($('contentList')) $('contentList').innerHTML = html;
   });
 }
 
-// ==== CO PANEL & SUPER CONTROLS ====
+// ==== CO PANEL SYSTEM ====
 window.showCOPanel = function(){
   if(!currentUser?.isCO) return toast('Only CO can access');
   $('app').innerHTML = `
-    <div class="screen active" id="copanel">
+    <div class="screen active">
       <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>CO Panel</span></header>
       <div class="main-content">
         <div class="nav-grid">
           <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coManageUsers()"><div class="icon">⚙️</div><div class="label">Manage Users</div></div>
-          <div class="nav-btn" onclick="coDelNotice()"><div class="icon">🗑️</div><div class="label">Set Notice</div></div>
-          <div class="nav-btn" onclick="coWipeAllChats()" style="background:#ff4444;"><div class="icon">💥</div><div class="label">Wipe Chats</div></div>
+          <div class="nav-btn" onclick="coAddDynamic('custom_games', 'Game')"><div class="icon">🎮</div><div class="label">Add Custom Game</div></div>
+          <div class="nav-btn" onclick="coAddDynamic('custom_tools', 'Tool')"><div class="icon">🛠️</div><div class="label">Add Custom Tool</div></div>
+          <div class="nav-btn" onclick="coAddApplication()"><div class="icon">📄</div><div class="label">Add Application</div></div>
+          <div class="nav-btn" onclick="coManageUsers()"><div class="icon">👥</div><div class="label">Manage Users</div></div>
         </div>
       </div>
     </div>
@@ -824,149 +564,102 @@ window.showCOPanel = function(){
 
 window.coAddQuest = function(){
   $('app').innerHTML = `
-    <div class="screen active" id="addQuest">
+    <div class="screen active">
       <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Quest</span></header>
       <div class="main-content">
-        <select class="input" id="qType" onchange="window.toggleHintField()">
-          <option value="mcq">MCQ</option>
-          <option value="vsaq">VSAQ</option>
-          <option value="break_hint">Break Hint</option>
-          <option value="picture">Picture URL</option>
-        </select>
-        <input class="input" id="qQ" placeholder="Question or URL">
-        <input class="input" id="qCoAns" placeholder="CO Answer">
-        <input class="input" id="qHints" placeholder="10 Hints: h1|h2|h3..." style="display:none">
-        <input class="input" id="qPoints" type="number" value="10">
-        <input class="input" id="qOpt" placeholder="Options (comma separated)">
+        <select class="input" id="qType"><option value="mcq">MCQ</option><option value="vsaq">VSAQ</option><option value="break_hint">Break Hint</option><option value="picture">Picture URL</option></select>
+        <input class="input" id="qQ" placeholder="Question/URL"><input class="input" id="qCoAns" placeholder="Answer"><input class="input" id="qOpt" placeholder="Options (comma separated)"><input class="input" id="qPoints" type="number" value="10">
         <button class="btn" onclick="saveQuest()">Save Quest</button>
       </div>
     </div>
   `;
 }
-
-window.toggleHintField = function(){
-  const hintsField = $('qHints');
-  if(hintsField) hintsField.style.display = $('qType').value === 'break_hint' ? 'block' : 'none';
+window.saveQuest = async function(){
+  await push(ref(db, 'quests'), { type:$('qType').value, question:$('qQ').value, coAnswer:$('qCoAns').value, options:$('qOpt').value.split(','), points:parseInt($('qPoints').value), createdAt:Date.now() });
+  toast('Quest Added!'); showCOPanel();
 }
 
-window.saveQuest = async function(){
-  const quest = {
-    type: $('qType').value, question: $('qQ').value, coAnswer: $('qCoAns').value,
-    hints: $('qHints').value, points: parseInt($('qPoints').value),
-    options: $('qOpt').value.split(',').map(x=>x.trim()).filter(x=>x), createdAt: Date.now()
-  };
-  await push(ref(db, 'quests'), quest);
-  toast('Quest added!');
+window.coAddDynamic = function(node, label){
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Custom ${label}</span></header>
+      <div class="main-content">
+        <input class="input" id="dynName" placeholder="${label} Name">
+        <input class="input" id="dynIcon" placeholder="Emoji Icon (🧩 বা 🔧)">
+        <textarea class="input" id="dynCode" rows="8" placeholder="JavaScript Code লিখুন" style="height:150px; font-family:monospace;"></textarea>
+        <button class="btn" onclick="saveDynamic('${node}')">Publish ${label}</button>
+      </div>
+    </div>
+  `;
+}
+
+window.saveDynamic = async function(node){
+  const name = $('dynName').value.trim();
+  const icon = $('dynIcon').value.trim();
+  const code = $('dynCode').value.trim();
+  if(!name || !code) return toast('নাম এবং কোড দুটোই দিতে হবে');
+  
+  await push(ref(db, node), { name, icon, code, createdAt: Date.now() });
+  toast('লাইভ পাবলিশ হয়েছে!');
+  showCOPanel();
+}
+
+window.coAddApplication = function(){
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Application</span></header>
+      <div class="main-content">
+        <input class="input" id="appTitle" placeholder="অ্যাপ্লিকেশনের শিরোনাম (Title)">
+        <textarea class="input" id="appDesc" rows="6" placeholder="বিস্তারিত বিবরণ বা নোটিশ (Description)" style="height:120px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:8px; width:100%; padding:12px; margin-top:8px; font-family:inherit; font-size:14px;"></textarea>
+        <button class="btn" onclick="saveApplication()">Publish Application</button>
+      </div>
+    </div>
+  `;
+}
+
+window.saveApplication = async function(){
+  const title = $('appTitle').value.trim();
+  const desc = $('appDesc').value.trim();
+  if(!title || !desc) return toast('শিরোনাম এবং বিবরণ দুটোই লিখতে হবে');
+  
+  await push(ref(db, 'applications'), { title, desc, createdAt: Date.now() });
+  toast('অ্যাপ্লিকেশন সফলভাবে পাবলিশ হয়েছে!');
   showCOPanel();
 }
 
 window.coManageUsers = async function(){
-  const snap = await get(ref(db,'users'));
-  let html = '<h3>User Management</h3>';
-  if(snap.exists()){
-    Object.entries(snap.val()).forEach(([serial,u])=>{
-      html += `<div class="card" style="padding:10px;margin:8px 0">
-        <div>${u.name} (S:${serial})</div>
-        <button class="btn" style="width:auto;padding:4px 8px" onclick="deleteUser('${serial}')">Delete</button>
-      </div>`;
-    });
-  }
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Manage Users</span></header>
-      <div class="main-content">${html}</div>
-    </div>
-  `;
+  const snap = await get(ref(db,'users')); let html = '';
+  if(snap.exists()){ Object.entries(snap.val()).forEach(([s,u])=>{ html += `<div class="card">${u.name} (S:${s}) <button class="btn" style="width:auto;padding:4px 8px" onclick="deleteUser('${s}')">Delete</button></div>`; }); }
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button></header><div class="main-content">${html}</div></div>`;
 }
+window.deleteUser = async function(s){ if(confirm('Delete?')){ await remove(ref(db,'users/'+s)); coManageUsers(); } }
 
-window.deleteUser = async function(serial){
-  if(!confirm('Delete user?')) return;
-  await remove(ref(db,'users/'+serial));
-  toast('User Deleted');
-  coManageUsers();
-}
-
-window.coDelNotice = function(){
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Set Notice</span></header>
-      <div class="main-content">
-        <input class="input" id="nText" placeholder="Notice text">
-        <button class="btn" onclick="set(ref(ref(db,'notice'),{text:$('nText').value})); toast('Updated')">Update Notice</button>
-      </div>
-    </div>
-  `;
-}
-
-window.coWipeAllChats = async function(){
-  if(confirm('Wipe all chats permanently?')){
-    await remove(ref(db, 'chats'));
-    toast('Chats wiped!');
-  }
-}
-
-// ==== SECURITY & THEME ====
+// ==== SECURITY & CO SETUP ====
 async function checkCOSetup(){
-  const snap = await get(ref(db,'users'));
-  let hasCO = false;
-  if(snap.exists()){ hasCO = Object.values(snap.val()).some(u=>u.isCO); }
+  const snap = await get(ref(db,'users')); let hasCO = snap.exists() && Object.values(snap.val()).some(u=>u.isCO);
   if(!hasCO && currentUser){
-    $('app').innerHTML += `
-      <div class="card" style="margin-top:20px; border: 2px solid var(--accent2)">
-        <h3>First CO Claim Setup</h3>
-        <input class="input" id="coPass" type="password" placeholder="Enter CO Password">
-        <button class="btn" onclick="claimCO()">Claim CO</button>
-      </div>
-    `;
+    let div = document.createElement('div'); div.className='card'; div.innerHTML=`<h3>Claim CO</h3><input type="password" class="input" id="coPass"><button class="btn" onclick="claimCO()">Claim</button>`;
+    const mc = document.querySelector('.main-content'); if(mc) mc.appendChild(div);
   }
 }
-
 window.claimCO = async function(){
   if($('coPass').value === 'SNANDI2009'){
-    await update(ref(db,'users/'+currentUser.serial),{isCO:true});
-    currentUser.isCO = true;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-    toast('You are now CO!');
-    renderHome();
-  }else{ toast('Wrong Password!'); }
+    await update(ref(db,'users/'+currentUser.serial),{isCO:true}); currentUser.isCO = true;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser)); toast('You are CO!'); renderHome();
+  } else toast('Wrong!');
 }
 
-function loadCustomContent(){
-  get(ref(db,'custom_games')).then(gSnap=>{
-    if(gSnap.exists()){
-      Object.entries(gSnap.val()).forEach(([id,g])=>{
-        const grid = document.querySelector('.nav-grid');
-        if(grid) {
-          const btn = document.createElement('div');
-          btn.className = 'nav-btn';
-          btn.innerHTML = `<div class="icon">🎮</div><div class="label">${g.name}</div>`;
-          btn.onclick = ()=>eval(g.code);
-          grid.appendChild(btn);
-        }
-      });
-    }
-  });
+// ==== LOGOUT WITH NOTICE ====
+window.logoutWithNotice = function(){
+  const confirmLogout = confirm("⚠️ তুমি কি নিশ্চিত যে লগআউট করতে চাও?\n\nলগআউট করলে এই ডিভাইস থেকে তোমার চ্যানেল/অ্যাকাউন্ট সাময়িকভাবে ডিলিট হয়ে যাবে! পরবর্তীতে ফিরে আসতে চাইলে তোমার Serial No দিয়ে Recovery করতে হবে।");
+  if(confirmLogout){
+    localStorage.removeItem(STORAGE_KEY); 
+    sessionStorage.removeItem(TAB_KEY); 
+    currentUser = null; 
+    renderAuth();
+    toast('সফলভাবে লগআউট করা হয়েছে!');
+  }
 }
-
-window.logout = function(){
-  localStorage.removeItem(STORAGE_KEY);
-  sessionStorage.removeItem(TAB_KEY);
-  currentUser = null;
-  renderAuth();
-}
-
-// Initialization
-const saved = localStorage.getItem(STORAGE_KEY);
-if(saved){
-  currentUser = JSON.parse(saved);
-  renderHome();
-  checkTabLock();
-  checkBlueLight();
-}else{
-  renderAuth();
-}
-
-document.addEventListener('contextmenu', e=>e.preventDefault());
 </script>
 </body>
 </html>
