@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
 <title>YourChoice</title>
 <style>
 :root{
@@ -131,7 +134,7 @@ header{
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-import { getDatabase, ref, set, get, push, onValue, update, remove, query, orderByChild } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
+import { getDatabase, ref, set, get, push, onValue, update, remove, query, orderByChild, runTransaction } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
 
 // ==== FIREBASE CONFIG ====
 const firebaseConfig = {
@@ -148,32 +151,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Global variables
-window.db = db; 
-window.ref = ref; 
-window.set = set; 
-window.get = get; 
-window.push = push; 
-window.onValue = onValue; 
-window.update = update; 
-window.remove = remove; 
-window.query = query; 
-window.orderByChild = orderByChild;
+// Global Setup
+window.db = db; window.ref = ref; window.set = set; window.get = get; window.push = push; 
+window.onValue = onValue; window.update = update; window.remove = remove; window.query = query; 
+window.orderByChild = orderByChild; window.runTransaction = runTransaction;
 
 let currentUser = null;
-let currentScreen = 'auth';
-// ==== APP STATE ====
-const APP_VERSION = "1.0";
 const STORAGE_KEY = "yourchoice_user";
 const TAB_KEY = "yourchoice_tab_lock";
 
-// ==== UTILS ====
 function $(id){return document.getElementById(id)}
-function show(screen){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  $(screen)?.classList.add('active');
-  currentScreen = screen;
-}
+window.$ = $;
+
 function toast(msg){
   let t = document.createElement('div');
   t.textContent = msg;
@@ -181,8 +170,9 @@ function toast(msg){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 }
+window.toast = toast;
 
-// ==== SINGLE TAB LOCK ====
+// Tab Lock & Utilities
 function checkTabLock(){
   const tabId = sessionStorage.getItem(TAB_KEY) || Math.random().toString(36);
   sessionStorage.setItem(TAB_KEY, tabId);
@@ -195,13 +185,20 @@ function checkTabLock(){
   });
 }
 
-// ==== BLUE LIGHT FILTER ====
 function checkBlueLight(){
   const hour = new Date().getHours();
-  $('bluelight').style.display = (hour >= 18 || hour < 6) ? 'block' : 'none';
+  const filter = $('bluelight');
+  if(filter) filter.style.display = (hour >= 18 || hour < 6) ? 'block' : 'none';
 }
 
-// ==== AUTH SCREEN ====
+function isValidURL(url){
+  try{
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  }catch{return false}
+}
+
+// ==== AUTH SYSTEM ====
 function renderAuth(){
   $('app').innerHTML = `
     <div class="screen active" id="auth">
@@ -220,7 +217,6 @@ function renderAuth(){
   `;
 }
 
-// ==== LOGIN ====
 window.login = async function(){
   const name = $('name').value.trim();
   const serial = $('serial').value.trim();
@@ -238,13 +234,13 @@ window.login = async function(){
   if(snap.exists()){
     currentUser = snap.val();
   }else{
-    const isFirst = !(await get(ref(db, 'users'))).exists();
     currentUser = {
       name, serial, school, role,
-      isCO: isFirst,
+      isCO: false,
       score: 0,
       rank: 0,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      lastActive: Date.now()
     };
     await set(userRef, currentUser);
   }
@@ -253,19 +249,20 @@ window.login = async function(){
   renderHome();
   checkTabLock();
   checkBlueLight();
-  setInterval(checkBlueLight, 60000);
 }
 
 // ==== HOME SCREEN ====
 function renderHome(){
   const u = currentUser;
+  if(!u) return renderAuth();
+
   $('app').innerHTML = `
     <header>
       <div class="header-top">
         <div class="profile-info">
           <span>${u.name}</span>
           <span class="serial">S:${u.serial}</span>
-          <span class="rank">Rank:${u.rank}</span>
+          <span class="rank">Rank:${u.rank || 0}</span>
         </div>
         <span class="network-dot" id="netDot"></span>
       </div>
@@ -281,6 +278,8 @@ function renderHome(){
         <div class="nav-btn" onclick="showTools()"><div class="icon">🛠️</div><div class="label">Tools</div></div>
         <div class="nav-btn" onclick="showEvent()"><div class="icon">📅</div><div class="label">Event</div></div>
         <div class="nav-btn" onclick="showApp()"><div class="icon">📄</div><div class="label">Application</div></div>
+        <div class="nav-btn" onclick="showKnowledge()"><div class="icon">🧠</div><div class="label">Knowledge</div></div>
+        <div class="nav-btn" onclick="showLiterature()"><div class="icon">📖</div><div class="label">Literature</div></div>
       </div>
     </div>
     
@@ -290,68 +289,34 @@ function renderHome(){
       <button class="bottom-nav-btn" onclick="logout()">Logout</button>
     </div>
   `;
+  
   updateNetworkStatus();
   loadNotice();
-  loadUserScore();
+  checkCOSetup();
+  loadCustomContent();
 }
+window.renderHome = renderHome;
 
-// ==== NETWORK STATUS ====
+// Network Status
 function updateNetworkStatus(){
   const dot = $('netDot');
+  if(!dot) return;
   window.addEventListener('online', ()=>dot.classList.remove('offline'));
   window.addEventListener('offline', ()=>dot.classList.add('offline'));
   if(!navigator.onLine) dot.classList.add('offline');
 }
 
-// ==== LOAD NOTICE ====
 function loadNotice(){
   onValue(ref(db, 'notice'), snap=>{
     const data = snap.val();
-    if(data) $('noticeText').textContent = data.text || 'Welcome!';
+    const element = $('noticeText');
+    if(data && element) element.textContent = data.text || 'Welcome!';
   });
 }
 
-// ==== LOAD SCORE ====
-async function loadUserScore(){
-  const snap = await get(ref(db, 'users/' + currentUser.serial));
-  if(snap.exists()){
-    currentUser = snap.val();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-  }
-}
-
-// ==== LOGOUT ====
-window.logout = function(){
-  localStorage.removeItem(STORAGE_KEY);
-  sessionStorage.removeItem(TAB_KEY);
-  currentUser = null;
-  renderAuth();
-}
-
-// ==== AUTO LOGIN ====
-const saved = localStorage.getItem(STORAGE_KEY);
-if(saved){
-  currentUser = JSON.parse(saved);
-  renderHome();
-  checkTabLock();
-  checkBlueLight();
-  setInterval(checkBlueLight, 60000);
-}else{
-  renderAuth();
-}
-
-// Placeholder functions for next blocks
-window.showQuest = ()=>toast('Quest coming in Block 3');
-window.showContact = ()=>toast('Contact coming in Block 4');
-window.showBattle = ()=>toast('Battle coming in Block 5');
-window.showGames = ()=>toast('Games coming in Block 6');
-window.showTools = ()=>toast('Tools coming in Block 7');
-window.showEvent = ()=>toast('Event coming in Block 8');
-window.showApp = ()=>toast('Application coming in Block 9');
-window.showCOPanel = ()=>toast('CO Panel coming in Block 10');
 // ==== QUEST SYSTEM ====
 window.showQuest = function(){
-  $('app').innerHTML += `
+  $('app').innerHTML = `
     <div class="screen active" id="quest">
       <header>
         <div class="header-top">
@@ -375,7 +340,7 @@ function loadQuests(){
         html += `
           <div class="card" onclick="startQuest('${id}')">
             <div style="font-size:12px;color:var(--muted)">${q.type.toUpperCase()}</div>
-            <div style="margin:8px 0;font-weight:600">${q.question}</div>
+            <div style="margin:8px 0;font-weight:600">${q.type === 'picture' ? 'Picture Quest' : q.question}</div>
             <div style="font-size:12px;color:var(--accent)">+${q.points} points</div>
           </div>
         `;
@@ -383,7 +348,8 @@ function loadQuests(){
     }else{
       html += '<div class="card">No quests yet. CO will add soon!</div>';
     }
-    $('questList').innerHTML = html;
+    const qList = $('questList');
+    if(qList) qList.innerHTML = html;
   });
 }
 
@@ -392,1370 +358,6 @@ window.startQuest = async function(id){
   if(!snap.exists()) return;
   const q = snap.val();
   
-  let answerHTML = '';
-  if(q.type === 'mcq'){
-    q.options.forEach((opt,i)=>{
-      answerHTML += `<button class="btn btn-secondary" onclick="submitAnswer('${id}','${opt}')">${opt}</button>`;
-    });
-  }else{
-    answerHTML = `<input class="input" id="qAns" placeholder="Type your answer">
-                  <button class="btn" onclick="submitAnswer('${id}',$('qAns').value)">Submit</button>`;
-  }
-  
-  $('app').innerHTML += `
-    <div class="screen active" id="questPlay">
-      <div class="card">
-        <div style="color:var(--muted);font-size:12px">${q.type}</div>
-        <h3 style="margin:10px 0">${q.question}</h3>
-        ${q.hint ? `<div style="font-size:12px;color:var(--accent)">Hint: ${q.hint}</div>`:''}
-        ${answerHTML}
-      </div>
-    </div>
-  `;
-}
-
-window.submitAnswer = async function(id, ans){
-  const snap = await get(ref(db, 'quests/' + id));
-  const q = snap.val();
-  const correct = ans.toLowerCase().trim() === q.answer.toLowerCase().trim();
-  
-  if(correct){
-    const newScore = (currentUser.score || 0) + q.points;
-    await update(ref(db, 'users/' + currentUser.serial), {score: newScore});
-    currentUser.score = newScore;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-    toast(`Correct! +${q.points} points`);
-  }else{
-    toast('Wrong answer! Try again');
-  }
-  
-  showQuest();
-}
-
-// ==== CO ADD QUEST ====
-window.coAddQuest = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="addQuest">
-      <header>
-        <button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Add Quest</span>
-      </header>
-      <div class="main-content">
-        <select class="input" id="qType">
-          <option value="mcq">MCQ</option>
-          <option value="vsaq">VSAQ</option>
-          <option value="break_hint">Break Hint</option>
-          <option value="picture">Picture</option>
-          <option value="audio">Audio</option>
-          <option value="video">Video</option>
-          <option value="learning">Learning</option>
-        </select>
-        <input class="input" id="qQ" placeholder="Question">
-        <input class="input" id="qA" placeholder="Answer">
-        <input class="input" id="qHint" placeholder="Hint (optional)">
-        <input class="input" id="qPoints" type="number" value="10" placeholder="Points">
-        <input class="input" id="qOpt" placeholder="MCQ Options (comma separated)">
-        <button class="btn" onclick="saveQuest()">Save Quest</button>
-      </div>
-    </div>
-  `;
-}
-
-window.saveQuest = async function(){
-  const quest = {
-    type: $('qType').value,
-    question: $('qQ').value,
-    answer: $('qA').value,
-    hint: $('qHint').value,
-    points: parseInt($('qPoints').value),
-    options: $('qOpt').value.split(',').map(x=>x.trim()),
-    createdAt: Date.now(),
-    createdBy: currentUser.serial
-  };
-  await push(ref(db, 'quests'), quest);
-  toast('Quest added!');
-  showCOPanel();
-}
-// ==== CONTACT SYSTEM ====
-window.showContact = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="contact">
-      <header>
-        <div class="header-top">
-          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-          <span>Contact</span>
-          <button onclick="showFindUser()" style="background:none;border:none;color:var(--accent)">+ Add</button>
-        </div>
-      </header>
-      <div class="main-content">
-        <div class="card">
-          <h3>Friends</h3>
-          <div id="friendList">Loading...</div>
-        </div>
-        <div class="card">
-          <h3>Friend Requests</h3>
-          <div id="reqList">Loading...</div>
-        </div>
-      </div>
-    </div>
-  `;
-  loadFriends();
-  loadRequests();
-}
-
-function loadFriends(){
-  onValue(ref(db, 'friends/' + currentUser.serial), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.keys(data).forEach(fid=>{
-        html += `<div class="card" style="padding:10px;margin:8px 0" onclick="openChat('${fid}')">
-          <span>👤 ${fid}</span>
-          <button class="btn-secondary" style="float:right;padding:4px 10px;font-size:12px" 
-            onclick="event.stopPropagation();sendBattleReq('${fid}')">Battle</button>
-        </div>`;
-      });
-    }else html = '<div style="color:var(--muted)">No friends yet</div>';
-    $('friendList').innerHTML = html;
-  });
-}
-
-function loadRequests(){
-  onValue(ref(db, 'requests/' + currentUser.serial), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).forEach(([from,status])=>{
-        if(status === 'pending'){
-          html += `<div class="card" style="padding:10px;margin:8px 0">
-            <span>${from}</span>
-            <button class="btn" style="float:right;width:auto;padding:4px 12px" 
-              onclick="acceptReq('${from}')">Accept</button>
-          </div>`;
-        }
-      });
-    }else html = '<div style="color:var(--muted)">No requests</div>';
-    $('reqList').innerHTML = html;
-  });
-}
-
-window.showFindUser = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="findUser">
-      <header>
-        <button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Find User</span>
-      </header>
-      <div class="main-content">
-        <input class="input" id="findSerial" placeholder="Enter Serial No">
-        <button class="btn" onclick="sendFriendReq()">Send Request</button>
-      </div>
-    </div>
-  `;
-}
-
-window.sendFriendReq = async function(){
-  const serial = $('findSerial').value.trim();
-  if(!serial || serial === currentUser.serial) return toast('Invalid serial');
-  const snap = await get(ref(db, 'users/' + serial));
-  if(!snap.exists()) return toast('User not found');
-  await set(ref(db, 'requests/' + serial + '/' + currentUser.serial), 'pending');
-  toast('Request sent!');
-  showContact();
-}
-
-window.acceptReq = async function(from){
-  await set(ref(db, 'friends/' + currentUser.serial + '/' + from), true);
-  await set(ref(db, 'friends/' + from + '/' + currentUser.serial), true);
-  await remove(ref(db, 'requests/' + currentUser.serial + '/' + from));
-  toast('Friend added!');
-  loadFriends();
-  loadRequests();
-}
-
-// ==== CHAT SYSTEM ====
-window.openChat = function(fid){
-  const chatId = [currentUser.serial, fid].sort().join('_');
-  $('app').innerHTML += `
-    <div class="screen active" id="chat">
-      <header>
-        <button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>${fid}</span>
-      </header>
-      <div class="main-content" id="chatBox" style="height:calc(100vh-160px);overflow-y:auto"></div>
-      <div style="position:fixed;bottom:0;left:0;right:0;padding:10px;background:var(--card);display:flex;gap:8px">
-        <input class="input" id="chatInput" placeholder="Type message" style="margin:0">
-        <button class="btn" onclick="sendMsg('${chatId}','${fid}')" style="width:auto">Send</button>
-      </div>
-    </div>
-  `;
-  onValue(ref(db, 'chats/' + chatId), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.values(data).forEach(m=>{
-        html += `<div style="margin:8px 0;text-align:${m.from===currentUser.serial?'right':'left'}">
-          <span style="background:${m.from===currentUser.serial?'var(--accent)':'var(--border)'};padding:8px 12px;border-radius:12px;display:inline-block;max-width:70%">${m.text}</span>
-        </div>`;
-      });
-    }
-    $('chatBox').innerHTML = html;
-    $('chatBox').scrollTop = $('chatBox').scrollHeight;
-  });
-}
-
-window.sendMsg = async function(chatId,fid){
-  const txt = $('chatInput').value.trim();
-  if(!txt) return;
-  await push(ref(db, 'chats/' + chatId), {
-    from: currentUser.serial,
-    to: fid,
-    text: txt,
-    time: Date.now()
-  });
-  $('chatInput').value = '';
-}
-
-// ==== BATTLE REQUEST ====
-window.sendBattleReq = async function(fid){
-  await set(ref(db, 'battles/' + fid + '/' + currentUser.serial), {
-    from: currentUser.serial,
-    status: 'pending',
-    time: Date.now()
-  });
-  toast('Battle request sent!');
-}
-// ==== ONLINE BATTLE SYSTEM ====
-window.showBattle = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="battle">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Online Battle</span>
-      </header>
-      <div class="main-content">
-        <div class="card">
-          <h3>Pending Requests</h3>
-          <div id="battleReqs">Loading...</div>
-        </div>
-        <div class="card" id="gameBoard" style="display:none">
-          <h3 id="gameTurn"></h3>
-          <div id="ticGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0"></div>
-        </div>
-      </div>
-    </div>
-  `;
-  loadBattleReqs();
-}
-
-function loadBattleReqs(){
-  onValue(ref(db, 'battles/' + currentUser.serial), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).forEach(([from,req])=>{
-        if(req.status === 'pending'){
-          html += `<div class="card" style="padding:10px">
-            <span>From: ${from}</span>
-            <button class="btn" style="width:auto;float:right;padding:4px 12px"
-              onclick="acceptBattle('${from}')">Accept</button>
-            <button class="btn-secondary" style="width:auto;float:right;padding:4px 12px;margin-right:8px"
-              onclick="rejectBattle('${from}')">Reject</button>
-          </div>`;
-        }else if(req.status === 'accepted'){
-          html += `<button class="btn" onclick="startGame('${from}')">Join Game with ${from}</button>`;
-        }
-      });
-    }else html = '<div style="color:var(--muted)">No requests</div>';
-    $('battleReqs').innerHTML = html;
-  });
-}
-
-window.acceptBattle = async function(from){
-  await update(ref(db, 'battles/' + currentUser.serial + '/' + from), {status:'accepted'});
-  await update(ref(db, 'battles/' + from + '/' + currentUser.serial), {status:'accepted'});
-  toast('Battle accepted! Starting game...');
-  startGame(from);
-}
-
-window.rejectBattle = async function(from){
-  await remove(ref(db, 'battles/' + currentUser.serial + '/' + from));
-  toast('Request rejected');
-}
-
-window.startGame = function(opponent){
-  const gameId = [currentUser.serial, opponent].sort().join('_');
-  $('gameBoard').style.display = 'block';
-
-  const grid = Array(9).fill('');
-  let turn = currentUser.serial;
-
-  onValue(ref(db, 'games/' + gameId), snap=>{
-    const data = snap.val();
-    if(data){
-      grid.splice(0,9,...data.board);
-      turn = data.turn;
-    }
-    renderGrid(grid, gameId, turn, opponent);
-  });
-
-  if(!get(ref(db, 'games/' + gameId)).val()){
-    set(ref(db, 'games/' + gameId), {
-      board: grid,
-      turn: currentUser.serial,
-      players: [currentUser.serial, opponent]
-    });
-  }
-}
-
-function renderGrid(board, gameId, turn, opponent){
-  let html = '';
-  board.forEach((cell,i)=>{
-    html += `<button style="aspect-ratio:1;font-size:32px;background:var(--border);border:none;border-radius:8px;color:var(--text)"
-      onclick="makeMove('${gameId}',${i},'${turn}','${opponent}')" ${cell||turn!==currentUser.serial?'disabled':''}>${cell}</button>`;
-  });
-  $('ticGrid').innerHTML = html;
-  $('gameTurn').textContent = turn === currentUser.serial? 'Your Turn' : 'Opponent Turn';
-
-  const winner = checkWinner(board);
-  if(winner){
-    toast(winner === currentUser.serial? 'You Won! +50' : 'You Lost!');
-    if(winner === currentUser.serial){
-      update(ref(db, 'users/' + currentUser.serial), {score: (currentUser.score||0)+50});
-    }
-    remove(ref(db, 'games/' + gameId));
-  }
-}
-
-window.makeMove = async function(gameId,i,turn,opp){
-  const snap = await get(ref(db, 'games/' + gameId));
-  if(!snap.exists()) return;
-  const game = snap.val();
-  if(game.board[i] || game.turn!== currentUser.serial) return;
-
-  game.board[i] = currentUser.serial === game.players[0]? 'X' : 'O';
-  game.turn = game.players.find(p=>p!==currentUser.serial);
-  await set(ref(db, 'games/' + gameId), game);
-}
-
-function checkWinner(b){
-  const w=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-  for(let [a,c,e] of w){
-    if(b[a] && b[a]===b[c] && b[a]===b[e]) return b[a];
-  }
-  return null;
-}
-// ==== GAMES SYSTEM ====
-window.showGames = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="games">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Games</span>
-      </header>
-      <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="playTicVsComp()"><div class="icon">🤖</div><div class="label">VS Computer</div></div>
-          <div class="nav-btn" onclick="playTic2P()"><div class="icon">👥</div><div class="label">2 Players</div></div>
-          <div class="nav-btn" onclick="playDice()"><div class="icon">🎲</div><div class="label">Dice</div></div>
-          <div class="nav-btn" onclick="playDiagonal()"><div class="icon">📐</div><div class="label">Diagonal</div></div>
-        </div>
-        <div id="gameArea" style="margin-top:20px"></div>
-      </div>
-    </div>
-  `;
-}
-
-// TicTacToe VS Computer
-window.playTicVsComp = function(){
-  let board = Array(9).fill('');
-  let turn = 'X';
-  function render(){
-    let html = '<h3>VS Computer</h3><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0">';
-    board.forEach((c,i)=>{
-      html += `<button style="aspect-ratio:1;font-size:32px;background:var(--border);border:none;border-radius:8px;color:var(--text)" 
-        onclick="compMove(${i})" ${c?'disabled':''}>${c}</button>`;
-    });
-    html += '</div>';
-    $('gameArea').innerHTML = html;
-  }
-  window.compMove = function(i){
-    if(board[i] || turn!=='X') return;
-    board[i]='X';
-    if(checkWin(board,'X')) return endGame('You Won!');
-    turn='O';
-    render();
-    setTimeout(()=>{
-      let empty = board.map((v,j)=>v?'':j).filter(x=>x!=='');
-      if(empty.length){
-        board[empty[Math.floor(Math.random()*empty.length)]]='O';
-        if(checkWin(board,'O')) return endGame('Computer Won!');
-        turn='X';
-        render();
-      }
-    },500);
-    render();
-  }
-  function endGame(msg){
-    toast(msg);
-    $('gameArea').innerHTML += `<button class="btn" onclick="playTicVsComp()">Play Again</button>`;
-  }
-  render();
-}
-
-// 2 Players Local
-window.playTic2P = function(){
-  let board = Array(9).fill('');
-  let turn = 'X';
-  function render(){
-    let html = `<h3>2 Players - Turn: ${turn}</h3><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0">`;
-    board.forEach((c,i)=>{
-      html += `<button style="aspect-ratio:1;font-size:32px;background:var(--border);border:none;border-radius:8px;color:var(--text)" 
-        onclick="p2Move(${i})" ${c?'disabled':''}>${c}</button>`;
-    });
-    html += '</div>';
-    $('gameArea').innerHTML = html;
-  }
-  window.p2Move = function(i){
-    if(board[i]) return;
-    board[i]=turn;
-    if(checkWin(board,turn)) return endGame(`${turn} Won!`);
-    turn = turn==='X'?'O':'X';
-    render();
-  }
-  function endGame(msg){
-    toast(msg);
-    $('gameArea').innerHTML += `<button class="btn" onclick="playTic2P()">Play Again</button>`;
-  }
-  render();
-}
-
-// Dice
-window.playDice = function(){
-  let d1 = Math.floor(Math.random()*6)+1;
-  let d2 = Math.floor(Math.random()*6)+1;
-  $('gameArea').innerHTML = `
-    <h3>Dice Roll</h3>
-    <div style="font-size:60px;text-align:center;margin:20px 0">${d1} 🎲 ${d2}</div>
-    <button class="btn" onclick="playDice()">Roll Again</button>
-  `;
-}
-
-// Diagonal
-window.playDiagonal = function(){
-  $('gameArea').innerHTML = `
-    <h3>Diagonal Game</h3>
-    <div style="text-align:center;margin:20px 0;color:var(--muted)">Tap to create diagonal pattern</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
-      ${Array(16).fill(0).map((_,i)=>`<button id="d${i}" onclick="toggleDiag(${i})" 
-        style="aspect-ratio:1;background:var(--border);border:none;border-radius:6px"></button>`).join('')}
-    </div>
-  `;
-  window.toggleDiag = function(i){
-    const btn = $('d'+i);
-    btn.style.background = btn.style.background==='var(--accent)'?'var(--border)':'var(--accent)';
-  }
-}
-
-function checkWin(b,p){
-  const w=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-  return w.some(([a,c,e])=>b[a]===p&&b[c]===p&&b[e]===p);
-}
-// ==== TOOLS SYSTEM ====
-window.showTools = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="tools">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Tools</span>
-      </header>
-      <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="toolCalc()"><div class="icon">🧮</div><div class="label">Calculator</div></div>
-          <div class="nav-btn" onclick="toolClock()"><div class="icon">⏰</div><div class="label">Chess Clock</div></div>
-          <div class="nav-btn" onclick="toolCount()"><div class="icon">⏳</div><div class="label">Countdown</div></div>
-          <div class="nav-btn" onclick="toolPDF()"><div class="icon">📄</div><div class="label">PDF Viewer</div></div>
-          <div class="nav-btn" onclick="toolQR()"><div class="icon">📱</div><div class="label">QR Generator</div></div>
-          <div class="nav-btn" onclick="toolStop()"><div class="icon">⏱️</div><div class="label">Stopwatch</div></div>
-        </div>
-        <div id="toolArea" style="margin-top:20px"></div>
-      </div>
-    </div>
-  `;
-}
-
-window.toolCalc = function(){
-  $('toolArea').innerHTML = `
-    <h3>Calculator</h3>
-    <input class="input" id="calcIn" placeholder="Enter expression e.g 2+3*4">
-    <button class="btn" onclick="$('calcOut').textContent=eval($('calcIn').value)">Calculate</button>
-    <div id="calcOut" style="font-size:24px;margin-top:10px;text-align:center"></div>
-  `;
-}
-
-window.toolClock = function(){
-  let t1=300,t2=300,run=0;
-  function render(){
-    $('toolArea').innerHTML = `
-      <h3>Chess Clock</h3>
-      <div style="display:flex;gap:10px;margin:20px 0">
-        <div class="card" style="flex:1;text-align:center">
-          <div style="font-size:32px">${Math.floor(t1/60)}:${String(t1%60).padStart(2,0)}</div>
-          <button class="btn" onclick="run=1;tick()">Player 1</button>
-        </div>
-        <div class="card" style="flex:1;text-align:center">
-          <div style="font-size:32px">${Math.floor(t2/60)}:${String(t2%60).padStart(2,0)}</div>
-          <button class="btn" onclick="run=2;tick()">Player 2</button>
-        </div>
-      </div>
-    `;
-  }
-  window.tick = function(){
-    if(run===1 && t1>0){t1--;setTimeout(()=>{if(run===1)tick()},1000)}
-    if(run===2 && t2>0){t2--;setTimeout(()=>{if(run===2)tick()},1000)}
-    render();
-  }
-  render();
-}
-
-window.toolCount = function(){
-  let sec=60,timer;
-  $('toolArea').innerHTML = `
-    <h3>Countdown</h3>
-    <input class="input" id="countSec" type="number" value="60" placeholder="Seconds">
-    <button class="btn" onclick="sec=+$('countSec').value;startCount()">Start</button>
-    <div id="countDisp" style="font-size:48px;text-align:center;margin:20px 0">${sec}</div>
-  `;
-  window.startCount = function(){
-    clearInterval(timer);
-    timer=setInterval(()=>{
-      sec--;
-      $('countDisp').textContent=sec;
-      if(sec<=0){clearInterval(timer);toast('Time Up!')}
-    },1000);
-  }
-}
-
-window.toolPDF = function(){
-  $('toolArea').innerHTML = `
-    <h3>PDF Viewer</h3>
-    <input class="input" id="pdfUrl" placeholder="Paste PDF URL">
-    <button class="btn" onclick="$('pdfFrame').src=$('pdfUrl').value">Load</button>
-    <iframe id="pdfFrame" style="width:100%;height:400px;margin-top:10px;border:1px solid var(--border)"></iframe>
-  `;
-}
-
-window.toolQR = function(){
-  $('toolArea').innerHTML = `
-    <h3>QR Generator</h3>
-    <input class="input" id="qrText" placeholder="Enter text or URL">
-    <button class="btn" onclick="$('qrImg').src='https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent($('qrText').value)">Generate</button>
-    <img id="qrImg" style="display:block;margin:20px auto">
-  `;
-}
-
-window.toolStop = function(){
-  let ms=0,running=0,timer;
-  function render(){
-    $('toolArea').innerHTML = `
-      <h3>Stopwatch</h3>
-      <div style="font-size:48px;text-align:center;margin:20px 0">${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,0)}</div>
-      <div style="display:flex;gap:10px">
-        <button class="btn" onclick="running=1;swTick()">Start</button>
-        <button class="btn-secondary" onclick="running=0">Stop</button>
-        <button class="btn-secondary" onclick="ms=0;render()">Reset</button>
-      </div>
-    `;
-  }
-  window.swTick = function(){
-    if(running){ms+=100;setTimeout(swTick,100)}
-    render();
-  }
-  render();
-}
-// ==== EVENT & APPLICATION ====
-window.showEvent = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="event">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Events</span>
-      </header>
-      <div class="main-content" id="eventList"></div>
-    </div>
-  `;
-  loadContent('events','eventList');
-}
-
-window.showApp = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="application">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Applications</span>
-      </header>
-      <div class="main-content" id="appList"></div>
-    </div>
-  `;
-  loadContent('applications','appList');
-}
-
-function loadContent(type, container){
-  onValue(ref(db, type), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).reverse().forEach(([id,c])=>{
-        const expired = c.deleteTime && Date.now() > c.deleteTime;
-        if(!expired){
-          html += `<div class="card">
-            <h3>${c.title}</h3>
-            <p>${c.desc}</p>
-            <div style="font-size:12px;color:var(--muted)">By: ${c.by}</div>
-          </div>`;
-        }
-      });
-    }else html = '<div class="card">No content yet</div>';
-    $(container).innerHTML = html;
-  });
-}
-
-// ==== CO PANEL ====
-window.showCOPanel = function(){
-  if(!currentUser?.isCO) return toast('Only CO can access');
-  $('app').innerHTML += `
-    <div class="screen active" id="copanel">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>CO Panel</span>
-      </header>
-      <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coAddEvent()"><div class="icon">📅</div><div class="label">Add Event</div></div>
-          <div class="nav-btn" onclick="coAddApp()"><div class="icon">📄</div><div class="label">Add Application</div></div>
-          <div class="nav-btn" onclick="coAddGame()"><div class="icon">🎮</div><div class="label">Add Game</div></div>
-          <div class="nav-btn" onclick="coAddTool()"><div class="icon">🛠️</div><div class="label">Add Tool</div></div>
-          <div class="nav-btn" onclick="coViewUsers()"><div class="icon">👥</div><div class="label">View Users</div></div>
-          <div class="nav-btn" onclick="coDelNotice()"><div class="icon">🗑️</div><div class="label">Delete Notice</div></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-window.coAddEvent = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Event</span></header>
-      <div class="main-content">
-        <input class="input" id="eTitle" placeholder="Title">
-        <textarea class="input" id="eDesc" placeholder="Description"></textarea>
-        <input class="input" id="eTime" type="datetime-local" placeholder="Auto Delete Time">
-        <button class="btn" onclick="saveContent('events')">Post Event</button>
-      </div>
-    </div>
-  `;
-}
-
-window.coAddApp = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Application</span></header>
-      <div class="main-content">
-        <input class="input" id="eTitle" placeholder="Title">
-        <textarea class="input" id="eDesc" placeholder="Description"></textarea>
-        <input class="input" id="eTime" type="datetime-local" placeholder="Auto Delete Time">
-        <button class="btn" onclick="saveContent('applications')">Post Application</button>
-      </div>
-    </div>
-  `;
-}
-
-window.saveContent = async function(type){
-  const title = $('eTitle').value;
-  const desc = $('eDesc').value;
-  const time = $('eTime').value;
-  await push(ref(db, type), {
-    title, desc,
-    by: currentUser.serial,
-    deleteTime: time? new Date(time).getTime():null,
-    createdAt: Date.now()
-  });
-  toast('Posted!');
-  showCOPanel();
-}
-
-window.coDelNotice = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Set Notice</span></header>
-      <div class="main-content">
-        <input class="input" id="nText" placeholder="Notice text">
-        <button class="btn" onclick="set(ref(db,'notice'),{text:$('nText').value})">Update Notice</button>
-        <button class="btn-secondary" onclick="remove(ref(db,'notice'))">Delete Notice</button>
-      </div>
-    </div>
-  `;
-}
-
-window.coViewUsers = async function(){
-  const snap = await get(ref(db,'users'));
-  let html = '<h3>All Users</h3>';
-  if(snap.exists()){
-    Object.values(snap.val()).forEach(u=>{
-      html += `<div class="card" style="padding:10px;margin:8px 0">
-        ${u.name} - S:${u.serial} - Score:${u.score||0} - ${u.isCO?'CO':'User'}
-      </div>`;
-    });
-  }
-  $('app').innerHTML += `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Users</span></header><div class="main-content">${html}</div></div>`;
-}
-
-window.coAddGame = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Game</span></header>
-      <div class="main-content">
-        <textarea class="input" id="gameCode" placeholder="Paste JS code here" style="height:200px"></textarea>
-        <button class="btn" onclick="eval($('gameCode').value);toast('Game Added!')">Add Game</button>
-      </div>
-    </div>
-  `;
-}
-
-window.coAddTool = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Tool</span></header>
-      <div class="main-content">
-        <textarea class="input" id="toolCode" placeholder="Paste JS code here" style="height:200px"></textarea>
-        <button class="btn" onclick="eval($('toolCode').value);toast('Tool Added!')">Add Tool</button>
-      </div>
-    </div>
-  `;
-}
-
-// ==== SECURITY & EXTRA ====
-// Disable right click, copy, select
-document.addEventListener('contextmenu', e=>e.preventDefault());
-document.addEventListener('copy', e=>e.preventDefault());
-document.addEventListener('selectstart', e=>e.preventDefault());
-
-// Dark/Light Theme Auto
-function checkTheme(){
-  const hour = new Date().getHours();
-  document.documentElement.setAttribute('data-theme', hour>=6 && hour<18?'light':'dark');
-}
-checkTheme();
-setInterval(checkTheme, 600000);
-
-// Offline Support - Save score offline
-window.addEventListener('offline', ()=>{
-  localStorage.setItem('offlineScore', currentUser.score);
-});
-window.addEventListener('online', async ()=>{
-  const offScore = localStorage.getItem('offlineScore');
-  if(offScore && offScore != currentUser.score){
-    await update(ref(db,'users/'+currentUser.serial),{score:offScore});
-    localStorage.removeItem('offlineScore');
-    toast('Offline score synced!');
-  }
-});
-
-// Rank System
-async function updateRanks(){
-  const snap = await get(ref(db,'users'));
-  if(!snap.exists()) return;
-  const users = Object.values(snap.val()).sort((a,b)=>(b.score||0)-(a.score||0));
-  users.forEach((u,i)=>{
-    set(ref(db,'users/'+u.serial+'/rank'), i+1);
-  });
-}
-setInterval(updateRanks, 30000);
-
-// ==== BLOCK 9 FIXES ====
-
-// 1. FIXED QUEST RENDER - Picture + Link Support + Break Hint
-window.startQuest = async function(id){
-  const snap = await get(ref(db, 'quests/' + id));
-  if(!snap.exists()) return;
-  const q = snap.val();
-  
-  let contentHTML = '';
-  if(q.type === 'picture'){
-    contentHTML = `<img src="${q.question}" style="width:100%;max-height:300px;object-fit:contain;border-radius:8px;margin:10px 0">`;
-  }else if(['audio','video','learning'].includes(q.type)){
-    contentHTML = `<a href="${q.question}" target="_blank" style="color:var(--accent);word-break:break-all">${q.question}</a>`;
-  }else{
-    contentHTML = `<h3 style="margin:10px 0">${q.question}</h3>`;
-  }
-  
-  let answerHTML = '';
-  if(q.type === 'mcq'){
-    q.options.forEach((opt,i)=>{
-      answerHTML += `<button class="btn btn-secondary" onclick="submitAnswer('${id}','${opt}')">${opt}</button>`;
-    });
-  }else if(q.type === 'break_hint'){
-    answerHTML = `
-      <div id="hintBox" style="margin:10px 0;color:var(--accent);font-size:12px"></div>
-      <input class="input" id="qAns" placeholder="Final Answer">
-      <button class="btn" onclick="unlockHint('${id}')">Get Hint</button>
-      <button class="btn" onclick="submitAnswer('${id}',$('qAns').value)">Submit</button>
-    `;
-    window.hintStep = 0;
-    window.hintList = q.hints ? q.hints.split('|') : [];
-  }else{
-    answerHTML = `<input class="input" id="qAns" placeholder="Type your answer">
-                  <button class="btn" onclick="submitAnswer('${id}',$('qAns').value)">Submit</button>`;
-  }
-  
-  $('app').innerHTML += `
-    <div class="screen active" id="questPlay">
-      <div class="card">
-        <div style="color:var(--muted);font-size:12px">${q.type.toUpperCase()}</div>
-        ${contentHTML}
-        ${q.hint && q.type !== 'break_hint' ? `<div style="font-size:12px;color:var(--accent)">Hint: ${q.hint}</div>`:''}
-        ${answerHTML}
-      </div>
-    </div>
-  `;
-}
-
-window.unlockHint = function(id){
-  if(window.hintStep < window.hintList.length){
-    $('hintBox').innerHTML += `<div>Hint ${window.hintStep+1}: ${window.hintList[window.hintStep]}</div>`;
-    window.hintStep++;
-  }else{
-    toast('No more hints!');
-  }
-}
-
-// 2. FIXED CO ADD QUEST - Break Hint Support + Media Link Support
-window.saveQuest = async function(){
-  const qType = $('qType').value;
-  const quest = {
-    type: qType,
-    question: $('qQ').value,
-    answer: $('qA').value,
-    hint: $('qHint').value,
-    points: parseInt($('qPoints').value),
-    options: $('qOpt').value.split(',').map(x=>x.trim()).filter(x=>x),
-    hints: $('qHints').value, // for break_hint: hint1|hint2|hint3
-    createdAt: Date.now(),
-    createdBy: currentUser.serial
-  };
-  await push(ref(db, 'quests'), quest);
-  toast('Quest added!');
-  showCOPanel();
-}
-
-// Update coAddQuest UI to add break hint field
-window.coAddQuest = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="addQuest">
-      <header>
-        <button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Add Quest</span>
-      </header>
-      <div class="main-content">
-        <select class="input" id="qType" onchange="toggleHintField()">
-          <option value="mcq">MCQ</option>
-          <option value="vsaq">VSAQ</option>
-          <option value="break_hint">Break Hint</option>
-          <option value="picture">Picture URL</option>
-          <option value="audio">Audio URL</option>
-          <option value="video">Video URL</option>
-          <option value="learning">Learning URL</option>
-        </select>
-        <input class="input" id="qQ" placeholder="Question or URL for media">
-        <input class="input" id="qA" placeholder="Answer">
-        <input class="input" id="qHint" placeholder="Hint (optional)">
-        <input class="input" id="qHints" placeholder="Break Hints: hint1|hint2|hint3" style="display:none">
-        <input class="input" id="qPoints" type="number" value="10" placeholder="Points">
-        <input class="input" id="qOpt" placeholder="MCQ Options (comma separated)">
-        <button class="btn" onclick="saveQuest()">Save Quest</button>
-      </div>
-    </div>
-  `;
-}
-
-window.toggleHintField = function(){
-  $('qHints').style.display = $('qType').value === 'break_hint' ? 'block' : 'none';
-}
-
-// 3. PERMANENT CO ADD GAME/TOOL
-window.coAddGame = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Game</span></header>
-      <div class="main-content">
-        <input class="input" id="gameName" placeholder="Game Name">
-        <textarea class="input" id="gameCode" placeholder="Paste JS code here" style="height:200px"></textarea>
-        <button class="btn" onclick="saveGameTool('games')">Save Game</button>
-      </div>
-    </div>
-  `;
-}
-
-window.coAddTool = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Tool</span></header>
-      <div class="main-content">
-        <input class="input" id="gameName" placeholder="Tool Name">
-        <textarea class="input" id="gameCode" placeholder="Paste JS code here" style="height:200px"></textarea>
-        <button class="btn" onclick="saveGameTool('tools')">Save Tool</button>
-      </div>
-    </div>
-  `;
-}
-
-window.saveGameTool = async function(type){
-  const name = $('gameName').value;
-  const code = $('gameCode').value;
-  if(!name || !code) return toast('Fill all fields');
-  await push(ref(db, 'custom_' + type), {
-    name, code,
-    createdBy: currentUser.serial,
-    createdAt: Date.now()
-  });
-  toast(type + ' saved! Refresh to load');
-  showCOPanel();
-}
-
-// Load custom games/tools on home screen
-async function loadCustomContent(){
-  const gSnap = await get(ref(db,'custom_games'));
-  if(gSnap.exists()){
-    Object.entries(gSnap.val()).forEach(([id,g])=>{
-      const btn = document.createElement('div');
-      btn.className = 'nav-btn';
-      btn.innerHTML = `<div class="icon">🎮</div><div class="label">${g.name}</div>`;
-      btn.onclick = ()=>eval(g.code);
-      document.querySelector('.nav-grid')?.appendChild(btn);
-    });
-  }
-}
-setTimeout(loadCustomContent, 1000);
-
-// 4. KNOWLEDGE & LITERATURE
-window.showKnowledge = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="knowledge">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Knowledge</span>
-      </header>
-      <div class="main-content" id="knowList"></div>
-    </div>
-  `;
-  loadContent('knowledge','knowList');
-}
-
-window.showLiterature = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="literature">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Literature</span>
-      </header>
-      <div class="main-content" id="litList"></div>
-    </div>
-  `;
-  loadContent('literature','litList');
-}
-
-window.coAddKnowledge = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Knowledge</span></header>
-      <div class="main-content">
-        <input class="input" id="kTitle" placeholder="Title">
-        <textarea class="input" id="kDesc" placeholder="Description or URL"></textarea>
-        <input class="input" id="kTime" type="datetime-local" placeholder="Auto Delete Time">
-        <button class="btn" onclick="saveContent('knowledge')">Post</button>
-      </div>
-    </div>
-  `;
-}
-
-window.coAddLiterature = function(){
-  $('app').innerHTML += `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Literature</span></header>
-      <div class="main-content">
-        <input class="input" id="kTitle" placeholder="Title">
-        <textarea class="input" id="kDesc" placeholder="Description or URL"></textarea>
-        <input class="input" id="kTime" type="datetime-local" placeholder="Auto Delete Time">
-        <button class="btn" onclick="saveContent('literature')">Post</button>
-      </div>
-    </div>
-  `;
-}
-
-// Add Knowledge & Literature buttons to CO Panel
-const oldCOPanel = window.showCOPanel;
-window.showCOPanel = function(){
-  if(!currentUser?.isCO) return toast('Only CO can access');
-  $('app').innerHTML += `
-    <div class="screen active" id="copanel">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>CO Panel</span>
-      </header>
-      <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coAddEvent()"><div class="icon">📅</div><div class="label">Add Event</div></div>
-          <div class="nav-btn" onclick="coAddApp()"><div class="icon">📄</div><div class="label">Add Application</div></div>
-          <div class="nav-btn" onclick="coAddKnowledge()"><div class="icon">🧠</div><div class="label">Add Knowledge</div></div>
-          <div class="nav-btn" onclick="coAddLiterature()"><div class="icon">📖</div><div class="label">Add Literature</div></div>
-          <div class="nav-btn" onclick="coAddGame()"><div class="icon">🎮</div><div class="label">Add Game</div></div>
-          <div class="nav-btn" onclick="coAddTool()"><div class="icon">🛠️</div><div class="label">Add Tool</div></div>
-          <div class="nav-btn" onclick="coViewUsers()"><div class="icon">👥</div><div class="label">View Users</div></div>
-          <div class="nav-btn" onclick="coDelNotice()"><div class="icon">🗑️</div><div class="label">Delete Notice</div></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-// Add Knowledge & Literature buttons to Home
-const oldRenderHome = window.renderHome;
-window.renderHome = function(){
-  oldRenderHome();
-  const grid = document.querySelector('.nav-grid');
-  if(grid){
-    grid.innerHTML += `
-      <div class="nav-btn" onclick="showKnowledge()"><div class="icon">🧠</div><div class="label">Knowledge</div></div>
-      <div class="nav-btn" onclick="showLiterature()"><div class="icon">📖</div><div class="label">Literature</div></div>
-    `;
-  }
-}
-// ==== BLOCK 10 BUG FIXES ====
-
-// 1. BREAK HINT WITH POINT DEDUCTION
-window.submitAnswer = async function(id, ans){
-  const snap = await get(ref(db, 'quests/' + id));
-  const q = snap.val();
-  const correct = ans.toLowerCase().trim() === q.answer.toLowerCase().trim();
-  
-  let points = q.points;
-  if(q.type === 'break_hint'){
-    points = Math.max(1, q.points - (window.hintStep || 0) * 2);
-  }
-  
-  if(correct){
-    const newScore = (currentUser.score || 0) + points;
-    await update(ref(db, 'users/' + currentUser.serial), {score: newScore});
-    currentUser.score = newScore;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-    toast(`Correct! +${points} points`);
-  }else{
-    toast('Wrong answer! Try again');
-  }
-  
-  showQuest();
-}
-
-window.unlockHint = function(id){
-  if(!window.hintList) return;
-  if(window.hintStep < window.hintList.length){
-    $('hintBox').innerHTML += `<div>Hint ${window.hintStep+1}: ${window.hintList[window.hintStep]}</div>`;
-    window.hintStep++;
-    toast(`-${2} points for hint`);
-  }else{
-    toast('No more hints!');
-  }
-}
-
-// 2. BATTLE RACE CONDITION FIX WITH TRANSACTION
-window.makeMove = async function(gameId,i,turn,opp){
-  const gameRef = ref(db, 'games/' + gameId);
-  await runTransaction(gameRef, (game)=>{
-    if(!game) return game;
-    if(game.board[i] || game.turn !== currentUser.serial) return;
-    game.board[i] = currentUser.serial === game.players[0] ? 'X' : 'O';
-    game.turn = game.players.find(p=>p!==currentUser.serial);
-    return game;
-  });
-}
-
-// 3. URL VALIDATION FOR MEDIA QUESTS
-function isValidURL(url){
-  try{
-    const u = new URL(url);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  }catch{return false}
-}
-
-// Update startQuest picture/audio/video render
-window.startQuest = async function(id){
-  const snap = await get(ref(db, 'quests/' + id));
-  if(!snap.exists()) return;
-  const q = snap.val();
-  
-  let contentHTML = '';
-  if(q.type === 'picture'){
-    contentHTML = isValidURL(q.question) 
-      ? `<img src="${q.question}" onerror="this.style.display='none'" style="width:100%;max-height:300px;object-fit:contain;border-radius:8px;margin:10px 0">`
-      : '<div style="color:var(--accent2)">Invalid image URL</div>';
-  }else if(['audio','video','learning'].includes(q.type)){
-    contentHTML = isValidURL(q.question)
-      ? `<a href="${q.question}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all">Open Link</a>`
-      : '<div style="color:var(--accent2)">Invalid URL</div>';
-  }else{
-    contentHTML = `<h3 style="margin:10px 0">${q.question}</h3>`;
-  }
-  
-  // rest same as block 9
-  let answerHTML = '';
-  if(q.type === 'mcq'){
-    q.options.forEach((opt,i)=>{
-      answerHTML += `<button class="btn btn-secondary" onclick="submitAnswer('${id}','${opt}')">${opt}</button>`;
-    });
-  }else if(q.type === 'break_hint'){
-    answerHTML = `
-      <div id="hintBox" style="margin:10px 0;color:var(--accent);font-size:12px"></div>
-      <input class="input" id="qAns" placeholder="Final Answer">
-      <button class="btn" onclick="unlockHint('${id}')">Get Hint (-2 pts)</button>
-      <button class="btn" onclick="submitAnswer('${id}',$('qAns').value)">Submit</button>
-    `;
-    window.hintStep = 0;
-    window.hintList = q.hints ? q.hints.split('|') : [];
-  }else{
-    answerHTML = `<input class="input" id="qAns" placeholder="Type your answer">
-                  <button class="btn" onclick="submitAnswer('${id}',$('qAns').value)">Submit</button>`;
-  }
-  
-  $('app').innerHTML += `
-    <div class="screen active" id="questPlay">
-      <div class="card">
-        <div style="color:var(--muted);font-size:12px">${q.type.toUpperCase()}</div>
-        ${contentHTML}
-        ${q.hint && q.type !== 'break_hint' ? `<div style="font-size:12px;color:var(--accent)">Hint: ${q.hint}</div>`:''}
-        ${answerHTML}
-      </div>
-    </div>
-  `;
-}
-
-// 4. SAFE EVAL FOR CUSTOM GAME/TOOL
-function sanitizeCode(code){
-  const forbidden = ['localStorage','sessionStorage','firebase','eval','fetch','XMLHttpRequest','window.location','document.cookie'];
-  for(let f of forbidden){
-    if(code.includes(f)) return null;
-  }
-  return code;
-}
-
-window.saveGameTool = async function(type){
-  const name = $('gameName').value.trim();
-  const code = $('gameCode').value.trim();
-  if(!name || !code) return toast('Fill all fields');
-  if(!sanitizeCode(code)) return toast('Unsafe code blocked!');
-  await push(ref(db, 'custom_' + type), {
-    name, code,
-    createdBy: currentUser.serial,
-    createdAt: Date.now()
-  });
-  toast(type + ' saved! Refresh to load');
-  showCOPanel();
-}
-
-// 5. OFFLINE SCORE SERVER VALIDATION
-window.addEventListener('online', async ()=>{
-  const offScore = parseInt(localStorage.getItem('offlineScore') || 0);
-  if(offScore > currentUser.score){
-    const serverSnap = await get(ref(db,'users/'+currentUser.serial+'/score'));
-    const serverScore = serverSnap.val() || 0;
-    if(offScore <= serverScore + 500){ // max 500 points offline allowed
-      await update(ref(db,'users/'+currentUser.serial),{score:offScore});
-      currentUser.score = offScore;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-      toast('Offline score synced!');
-    }
-    localStorage.removeItem('offlineScore');
-  }
-});
-
-// 6. RANK SYSTEM OPTIMIZED - 5 MIN INTERVAL
-setInterval(updateRanks, 300000); // 5 min instead of 30 sec
-
-// 7. AUTO DELETE EXPIRED CONTENT
-function cleanupExpired(){
-  ['events','applications','knowledge','literature'].forEach(type=>{
-    onValue(ref(db,type), snap=>{
-      const data = snap.val();
-      if(data){
-        Object.entries(data).forEach(([id,c])=>{
-          if(c.deleteTime && Date.now() > c.deleteTime){
-            remove(ref(db,type+'/'+id));
-          }
-        });
-      }
-    });
-  });
-}
-setInterval(cleanupExpired, 600000); // 10 min
-
-// 8. CHAT MESSAGE DELETE
-window.deleteMsg = async function(chatId, msgId){
-  if(confirm('Delete this message?')){
-    await remove(ref(db,'chats/'+chatId+'/'+msgId));
-  }
-}
-
-// Update openChat to add long press delete
-window.openChat = function(fid){
-  const chatId = [currentUser.serial, fid].sort().join('_');
-  $('app').innerHTML += `
-    <div class="screen active" id="chat">
-      <header>
-        <button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>${fid}</span>
-      </header>
-      <div class="main-content" id="chatBox" style="height:calc(100vh-160px);overflow-y:auto"></div>
-      <div style="position:fixed;bottom:0;left:0;right:0;padding:10px;background:var(--card);display:flex;gap:8px">
-        <input class="input" id="chatInput" placeholder="Type message" style="margin:0">
-        <button class="btn" onclick="sendMsg('${chatId}','${fid}')" style="width:auto">Send</button>
-      </div>
-    </div>
-  `;
-  onValue(ref(db, 'chats/' + chatId), snap=>{
-    const data = snap.val();
-    let html = '';
-    if(data){
-      Object.entries(data).forEach(([msgId,m])=>{
-        html += `<div style="margin:8px 0;text-align:${m.from===currentUser.serial?'right':'left'}"
-          oncontextmenu="event.preventDefault();if('${m.from}'==='${currentUser.serial}')deleteMsg('${chatId}','${msgId}')">
-          <span style="background:${m.from===currentUser.serial?'var(--accent)':'var(--border)'};padding:8px 12px;border-radius:12px;display:inline-block;max-width:70%">${m.text}</span>
-        </div>`;
-      });
-    }
-    $('chatBox').innerHTML = html;
-    $('chatBox').scrollTop = $('chatBox').scrollHeight;
-  });
-}
-
-// 9. BATTLE CLEANUP
-window.acceptBattle = async function(from){
-  await update(ref(db, 'battles/' + currentUser.serial + '/' + from), {status:'accepted'});
-  await update(ref(db, 'battles/' + from + '/' + currentUser.serial), {status:'accepted'});
-  await remove(ref(db, 'battles/' + currentUser.serial + '/' + from));
-  toast('Battle accepted! Starting game...');
-  startGame(from);
-}
-// ==== BLOCK 11 CO SUPER CONTROLS + CHAT RESTRICTION ====
-
-// 1. CHAT RESTRICTION: ONLY TEXT ALLOWED
-window.sendMsg = async function(chatId,fid){
-  const txt = $('chatInput').value.trim();
-  if(!txt) return;
-  // Block if message contains image/video/audio tags or URLs
-  const lower = txt.toLowerCase();
-  if(lower.includes('<img') || lower.includes('<video') || lower.includes('<audio') || 
-     lower.includes('data:image') || lower.includes('.mp4') || lower.includes('.mp3') ||
-     lower.includes('.jpg') || lower.includes('.png') || lower.includes('.jpeg')){
-    return toast('Only text messages allowed!');
-  }
-  await push(ref(db, 'chats/' + chatId), {
-    from: currentUser.serial,
-    to: fid,
-    text: txt,
-    time: Date.now()
-  });
-  $('chatInput').value = '';
-}
-
-// 2. CO PANEL ADDONS: WIPE ALL CHATS + EDIT SCORES
-const oldShowCOPanel = window.showCOPanel;
-window.showCOPanel = function(){
-  if(!currentUser?.isCO) return toast('Only CO can access');
-  $('app').innerHTML += `
-    <div class="screen active" id="copanel">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>CO Panel</span>
-      </header>
-      <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coAddEvent()"><div class="icon">📅</div><div class="label">Add Event</div></div>
-          <div class="nav-btn" onclick="coAddApp()"><div class="icon">📄</div><div class="label">Add Application</div></div>
-          <div class="nav-btn" onclick="coAddKnowledge()"><div class="icon">🧠</div><div class="label">Add Knowledge</div></div>
-          <div class="nav-btn" onclick="coAddLiterature()"><div class="icon">📖</div><div class="label">Add Literature</div></div>
-          <div class="nav-btn" onclick="coAddGame()"><div class="icon">🎮</div><div class="label">Add Game</div></div>
-          <div class="nav-btn" onclick="coAddTool()"><div class="icon">🛠️</div><div class="label">Add Tool</div></div>
-          <div class="nav-btn" onclick="coViewUsers()"><div class="icon">👥</div><div class="label">View Users</div></div>
-          <div class="nav-btn" onclick="coDelNotice()"><div class="icon">🗑️</div><div class="label">Delete Notice</div></div>
-          <div class="nav-btn" onclick="coWipeAllChats()" style="background:#ff4444;"><div class="icon">💥</div><div class="label">Wipe All Chats</div></div>
-          <div class="nav-btn" onclick="coEditScores()"><div class="icon">✏️</div><div class="label">Edit Scores</div></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-// 3. WIPE ALL CHATS - DELETE ENTIRE CHATS NODE
-window.coWipeAllChats = async function(){
-  if(!confirm('ARE YOU SURE? This will delete ALL chats for EVERYONE. Cannot be undone!')){
-    return;
-  }
-  if(!confirm('FINAL CONFIRMATION: Delete all chat data?')){
-    return;
-  }
-  await remove(ref(db, 'chats'));
-  toast('All chats deleted successfully!');
-  showCOPanel();
-}
-
-// 4. EDIT SCORES FOR ALL USERS
-window.coEditScores = async function(){
-  const snap = await get(ref(db,'users'));
-  let html = '<h3>Edit User Scores</h3>';
-  if(snap.exists()){
-    Object.entries(snap.val()).forEach(([serial,u])=>{
-      html += `
-        <div class="card" style="padding:10px;margin:8px 0;display:flex;align-items:center;gap:10px">
-          <div style="flex:1">
-            <div>${u.name} - S:${serial}</div>
-            <div style="font-size:12px;color:var(--muted)">Current Score: ${u.score || 0}</div>
-          </div>
-          <input class="input" id="score_${serial}" type="number" value="${u.score || 0}" style="width:100px;margin:0">
-          <button class="btn" style="width:auto;padding:6px 12px" onclick="updateUserScore('${serial}')">Save</button>
-        </div>
-      `;
-    });
-  }
-  $('app').innerHTML += `
-    <div class="screen active" id="editScores">
-      <header>
-        <button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Edit Scores</span>
-      </header>
-      <div class="main-content">${html}</div>
-    </div>
-  `;
-}
-
-window.updateUserScore = async function(serial){
-  const newScore = parseInt($('score_'+serial).value) || 0;
-  await update(ref(db,'users/'+serial),{score:newScore});
-  toast(`Score updated for ${serial}`);
-  coEditScores();
-}
-// ==== BLOCK 12 FINAL FEATURES ====
-
-// 1. QUEST SYSTEM: HIDDEN CO ANSWER + ONE TIME ANSWER + BREAK HINT SCORING
-
-window.startQuest = async function(id){
-  const snap = await get(ref(db, 'quests/' + id));
-  if(!snap.exists()) return;
-  const q = snap.val();
-  
-  // Check if user already answered
   const ansSnap = await get(ref(db, 'quest_answers/' + currentUser.serial + '/' + id));
   const alreadyAnswered = ansSnap.exists();
   const prevAns = alreadyAnswered ? ansSnap.val().answer : null;
@@ -1785,8 +387,8 @@ window.startQuest = async function(id){
     `;
   }else{
     if(q.type === 'mcq'){
-      q.options.forEach((opt,i)=>{
-        answerHTML += `<button class="btn btn-secondary" onclick="submitQuestAnswer('${id}','${opt}')">${opt}</button>`;
+      q.options.forEach((opt)=>{
+        answerHTML += `<button class="btn btn-secondary" style="margin-top:5px" onclick="submitQuestAnswer('${id}','${opt}')">${opt}</button>`;
       });
     }else if(q.type === 'break_hint'){
       answerHTML = `
@@ -1796,19 +398,22 @@ window.startQuest = async function(id){
         <button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>
       `;
       window.hintStep = 0;
-      window.hintList = q.hints ? q.hints.split('|') : Array(10).fill('');
+      window.hintList = q.hints ? q.hints.split('|') : [];
     }else{
       answerHTML = `<input class="input" id="qAns" placeholder="Type your answer">
                     <button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>`;
     }
   }
   
-  $('app').innerHTML += `
+  $('app').innerHTML = `
     <div class="screen active" id="questPlay">
-      <div class="card">
-        <div style="color:var(--muted);font-size:12px">${q.type.toUpperCase()}</div>
-        ${contentHTML}
-        ${answerHTML}
+      <header><button onclick="showQuest()" style="background:none;border:none;color:var(--accent)">← Back</button></header>
+      <div class="main-content">
+        <div class="card">
+          <div style="color:var(--muted);font-size:12px">${q.type.toUpperCase()}</div>
+          ${contentHTML}
+          ${answerHTML}
+        </div>
       </div>
     </div>
   `;
@@ -1817,45 +422,36 @@ window.startQuest = async function(id){
 window.unlockBreakHint = function(id){
   if(window.hintStep >= 10) return toast('Max 10 hints reached!');
   const points = 10 - window.hintStep;
-  $('hintBox').innerHTML += `<div>Hint ${window.hintStep+1}: ${window.hintList[window.hintStep] || 'No hint'}</div>`;
-  $('hintPoints').textContent = Math.max(1, points);
+  const hBox = $('hintBox');
+  if(hBox) hBox.innerHTML += `<div>Hint ${window.hintStep+1}: ${window.hintList[window.hintStep] || 'No hint'}</div>`;
+  const hPoints = $('hintPoints');
+  if(hPoints) hPoints.textContent = Math.max(1, points - 1);
   window.hintStep++;
+  toast('-2 points for hint logic');
 }
 
 window.submitQuestAnswer = async function(id, ans){
   const qSnap = await get(ref(db, 'quests/' + id));
   const q = qSnap.val();
   
-  // Check if already answered
   const checkSnap = await get(ref(db, 'quest_answers/' + currentUser.serial + '/' + id));
-  if(checkSnap.exists()) return toast('Already answered! Review mode only.');
+  if(checkSnap.exists()) return toast('Already answered!');
   
   let earnedScore = 0;
-  let isCorrect = false;
-  
-  // Auto match with CO answer
-  isCorrect = ans.toLowerCase().trim() === q.coAnswer.toLowerCase().trim();
+  let isCorrect = ans.toLowerCase().trim() === (q.coAnswer || q.answer).toLowerCase().trim();
   
   if(q.type === 'break_hint'){
     const hintUsed = window.hintStep || 0;
-    if(isCorrect){
-      earnedScore = Math.max(1, 10 - hintUsed);
-    }else{
-      earnedScore = hintUsed >= 10 ? -3 : 0; // -3 if wrong after 10 hints
-    }
-  }else{
+    if(isCorrect){ earnedScore = Math.max(1, 10 - hintUsed); }
+    else { earnedScore = hintUsed >= 10 ? -3 : 0; }
+  } else {
     earnedScore = isCorrect ? q.points : -Math.abs(q.points);
   }
   
-  // Save answer
   await set(ref(db, 'quest_answers/' + currentUser.serial + '/' + id), {
-    answer: ans,
-    correct: isCorrect,
-    score: earnedScore,
-    time: Date.now()
+    answer: ans, correct: isCorrect, score: earnedScore, time: Date.now()
   });
   
-  // Update user score
   const newScore = (currentUser.score || 0) + earnedScore;
   await update(ref(db, 'users/' + currentUser.serial), {score: newScore});
   currentUser.score = newScore;
@@ -1865,197 +461,512 @@ window.submitQuestAnswer = async function(id, ans){
   showQuest();
 }
 
-// 2. FULL CO PANEL LOGIC - ALL ADD FUNCTIONS WORK 100%
-window.coAddQuest = function(){
-  $('app').innerHTML += `
-    <div class="screen active" id="addQuest">
+// ==== CONTACT & CHAT SYSTEM ====
+window.showContact = function(){
+  $('app').innerHTML = `
+    <div class="screen active" id="contact">
       <header>
-        <button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>Add Quest</span>
+        <div class="header-top">
+          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
+          <span>Contact</span>
+          <button onclick="showFindUser()" style="background:none;border:none;color:var(--accent)">+ Add</button>
+        </div>
       </header>
       <div class="main-content">
-        <select class="input" id="qType" onchange="toggleHintField()">
+        <div class="card"><h3>Friends</h3><div id="friendList">Loading...</div></div>
+        <div class="card"><h3>Friend Requests</h3><div id="reqList">Loading...</div></div>
+      </div>
+    </div>
+  `;
+  loadFriends();
+  loadRequests();
+}
+
+function loadFriends(){
+  onValue(ref(db, 'friends/' + currentUser.serial), snap=>{
+    const data = snap.val();
+    let html = '';
+    if(data){
+      Object.keys(data).forEach(fid=>{
+        html += `<div class="card" style="padding:10px;margin:8px 0" onclick="openChat('${fid}')">
+          <span>👤 ${fid}</span>
+          <button class="btn-secondary" style="float:right;padding:4px 10px;font-size:12px" 
+            onclick="event.stopPropagation();sendBattleReq('${fid}')">Battle</button>
+        </div>`;
+      });
+    }else html = '<div style="color:var(--muted)">No friends yet</div>';
+    const flist = $('friendList');
+    if(flist) flist.innerHTML = html;
+  });
+}
+
+function loadRequests(){
+  onValue(ref(db, 'requests/' + currentUser.serial), snap=>{
+    const data = snap.val();
+    let html = '';
+    if(data){
+      Object.entries(data).forEach(([from,status])=>{
+        if(status === 'pending'){
+          html += `<div class="card" style="padding:10px;margin:8px 0">
+            <span>${from}</span>
+            <button class="btn" style="float:right;width:auto;padding:4px 12px" onclick="acceptReq('${from}')">Accept</button>
+          </div>`;
+        }
+      });
+    }else html = '<div style="color:var(--muted)">No requests</div>';
+    const rlist = $('reqList');
+    if(rlist) rlist.innerHTML = html;
+  });
+}
+
+window.showFindUser = function(){
+  $('app').innerHTML = `
+    <div class="screen active" id="findUser">
+      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Find User</span></header>
+      <div class="main-content">
+        <input class="input" id="findSerial" placeholder="Enter Serial No">
+        <button class="btn" onclick="sendFriendReq()">Send Request</button>
+      </div>
+    </div>
+  `;
+}
+
+window.sendFriendReq = async function(){
+  const serial = $('findSerial').value.trim();
+  if(!serial || serial === currentUser.serial) return toast('Invalid serial');
+  const snap = await get(ref(db, 'users/' + serial));
+  if(!snap.exists()) return toast('User not found');
+  await set(ref(db, 'requests/' + serial + '/' + currentUser.serial), 'pending');
+  toast('Request sent!');
+  showContact();
+}
+
+window.acceptReq = async function(from){
+  await set(ref(db, 'friends/' + currentUser.serial + '/' + from), true);
+  await set(ref(db, 'friends/' + from + '/' + currentUser.serial), true);
+  await remove(ref(db, 'requests/' + currentUser.serial + '/' + from));
+  toast('Friend added!');
+}
+
+window.openChat = function(fid){
+  const chatId = [currentUser.serial, fid].sort().join('_');
+  $('app').innerHTML = `
+    <div class="screen active" id="chat">
+      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent)">← Back</button><span>${fid}</span></header>
+      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;padding-bottom:20px"></div>
+      <div style="position:fixed;bottom:0;left:0;right:0;padding:10px;background:var(--card);display:flex;gap:8px">
+        <input class="input" id="chatInput" placeholder="Type message" style="margin:0">
+        <button class="btn" onclick="sendMsg('${chatId}','${fid}')" style="width:auto;margin:0">Send</button>
+      </div>
+    </div>
+  `;
+  onValue(ref(db, 'chats/' + chatId), snap=>{
+    const data = snap.val();
+    let html = '';
+    if(data){
+      Object.entries(data).forEach(([msgId,m])=>{
+        html += `<div style="margin:8px 0;text-align:${m.from===currentUser.serial?'right':'left'}"
+          oncontextmenu="event.preventDefault();if('${m.from}'==='${currentUser.serial}')deleteMsg('${chatId}','${msgId}')">
+          <span style="background:${m.from===currentUser.serial?'var(--accent)':'var(--border)'};padding:8px 12px;border-radius:12px;display:inline-block;max-width:70%">${m.text}</span>
+        </div>`;
+      });
+    }
+    const cBox = $('chatBox');
+    if(cBox) {
+      cBox.innerHTML = html;
+      cBox.scrollTop = cBox.scrollHeight;
+    }
+  });
+}
+
+window.sendMsg = async function(chatId,fid){
+  const txt = $('chatInput').value.trim();
+  if(!txt) return;
+  const lower = txt.toLowerCase();
+  if(lower.includes('<img') || lower.includes('<video') || lower.includes('<audio') || 
+     lower.includes('data:image') || lower.includes('.mp4') || lower.includes('.mp3') ||
+     lower.includes('.jpg') || lower.includes('.png') || lower.includes('.jpeg')){
+    return toast('Only text messages allowed!');
+  }
+  await push(ref(db, 'chats/' + chatId), {
+    from: currentUser.serial, to: fid, text: txt, time: Date.now()
+  });
+  $('chatInput').value = '';
+}
+
+window.deleteMsg = async function(chatId, msgId){
+  if(confirm('Delete this message?')){ await remove(ref(db,'chats/'+chatId+'/'+msgId)); }
+}
+
+// ==== BATTLE SYSTEM ====
+window.showBattle = function(){
+  $('app').innerHTML = `
+    <div class="screen active" id="battle">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Online Battle</span></header>
+      <div class="main-content">
+        <div class="card"><h3>Pending Requests</h3><div id="battleReqs">Loading...</div></div>
+        <div class="card" id="gameBoard" style="display:none">
+          <h3 id="gameTurn"></h3>
+          <div id="ticGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  loadBattleReqs();
+}
+
+window.sendBattleReq = async function(fid){
+  await set(ref(db, 'battles/' + fid + '/' + currentUser.serial), {
+    from: currentUser.serial, status: 'pending', time: Date.now()
+  });
+  toast('Battle request sent!');
+}
+
+function loadBattleReqs(){
+  onValue(ref(db, 'battles/' + currentUser.serial), snap=>{
+    const data = snap.val();
+    let html = '';
+    if(data){
+      Object.entries(data).forEach(([from,req])=>{
+        if(req.status === 'pending'){
+          html += `<div class="card" style="padding:10px">
+            <span>From: ${from}</span>
+            <button class="btn" style="width:auto;float:right;padding:4px 12px" onclick="acceptBattle('${from}')">Accept</button>
+          </div>`;
+        }else if(req.status === 'accepted'){
+          html += `<button class="btn" onclick="startGame('${from}')">Join Game with ${from}</button>`;
+        }
+      });
+    }else html = '<div style="color:var(--muted)">No requests</div>';
+    const bReqs = $('battleReqs');
+    if(bReqs) bReqs.innerHTML = html;
+  });
+}
+
+window.acceptBattle = async function(from){
+  await update(ref(db, 'battles/' + currentUser.serial + '/' + from), {status:'accepted'});
+  await update(ref(db, 'battles/' + from + '/' + currentUser.serial), {status:'accepted'});
+  await remove(ref(db, 'battles/' + currentUser.serial + '/' + from));
+  toast('Battle accepted!');
+  startGame(from);
+}
+
+window.startGame = function(opponent){
+  const gameId = [currentUser.serial, opponent].sort().join('_');
+  const gBoard = $('gameBoard');
+  if(gBoard) gBoard.style.display = 'block';
+
+  const grid = Array(9).fill('');
+  onValue(ref(db, 'games/' + gameId), snap=>{
+    const data = snap.val();
+    if(data){
+      grid.splice(0,9,...data.board);
+      renderGrid(grid, gameId, data.turn, opponent);
+    }
+  });
+
+  get(ref(db, 'games/' + gameId)).then(snap => {
+    if(!snap.exists()){
+      set(ref(db, 'games/' + gameId), {
+        board: grid, turn: currentUser.serial, players: [currentUser.serial, opponent]
+      });
+    }
+  });
+}
+
+function renderGrid(board, gameId, turn, opponent){
+  let html = '';
+  board.forEach((cell,i)=>{
+    html += `<button style="aspect-ratio:1;font-size:32px;background:var(--border);border:none;border-radius:8px;color:var(--text)"
+      onclick="makeMove('${gameId}',${i})" ${cell || turn !== currentUser.serial ? 'disabled' : ''}>${cell}</button>`;
+  });
+  const tGrid = $('ticGrid');
+  if(tGrid) tGrid.innerHTML = html;
+  const gTurn = $('gameTurn');
+  if(gTurn) gTurn.textContent = turn === currentUser.serial ? 'Your Turn' : 'Opponent Turn';
+
+  const winner = checkWinner(board);
+  if(winner){
+    toast(winner === 'X' ? 'Game Ended!' : 'Over!');
+    remove(ref(db, 'games/' + gameId));
+  }
+}
+
+window.makeMove = async function(gameId, i){
+  const gameRef = ref(db, 'games/' + gameId);
+  await runTransaction(gameRef, (game)=>{
+    if(!game) return game;
+    if(game.board[i] || game.turn !== currentUser.serial) return game;
+    game.board[i] = currentUser.serial === game.players[0] ? 'X' : 'O';
+    game.turn = game.players.find(p => p !== currentUser.serial);
+    return game;
+  });
+}
+
+function checkWinner(b){
+  const w=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  for(let [a,c,e] of w){ if(b[a] && b[a]===b[c] && b[a]===b[e]) return b[a]; }
+  return null;
+}
+
+// ==== GAMES & TOOLS SYSTEM ====
+window.showGames = function(){
+  $('app').innerHTML = `
+    <div class="screen active" id="games">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Games</span></header>
+      <div class="main-content">
+        <div class="nav-grid">
+          <div class="nav-btn" onclick="playTicVsComp()"><div class="icon">🤖</div><div class="label">VS Computer</div></div>
+          <div class="nav-btn" onclick="playDice()"><div class="icon">🎲</div><div class="label">Dice</div></div>
+        </div>
+        <div id="gameArea" style="margin-top:20px"></div>
+      </div>
+    </div>
+  `;
+}
+
+window.playTicVsComp = function(){
+  let board = Array(9).fill('');
+  let turn = 'X';
+  function render(){
+    let html = '<h3>VS Computer</h3><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0">';
+    board.forEach((c,i)=>{
+      html += `<button style="aspect-ratio:1;font-size:32px;background:var(--border);border:none;border-radius:8px;color:var(--text)" onclick="compMove(${i})" ${c?'disabled':''}>${c}</button>`;
+    });
+    html += '</div>';
+    $('gameArea').innerHTML = html;
+  }
+  window.compMove = function(i){
+    if(board[i] || turn!=='X') return;
+    board[i]='X'; render();
+    setTimeout(()=>{
+      let empty = board.map((v,j)=>v?'':j).filter(x=>x!=='');
+      if(empty.length){
+        board[empty[Math.floor(Math.random()*empty.length)]]='O';
+        turn='X'; render();
+      }
+    },500);
+  };
+  render();
+}
+
+window.playDice = function(){
+  let d1 = Math.floor(Math.random()*6)+1;
+  $('gameArea').innerHTML = `<h3>Dice Roll</h3><div style="font-size:60px;text-align:center;margin:20px 0">🎲 ${d1}</div><button class="btn" onclick="playDice()">Roll</button>`;
+}
+
+window.showTools = function(){
+  $('app').innerHTML = `
+    <div class="screen active" id="tools">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Tools</span></header>
+      <div class="main-content">
+        <div class="nav-grid">
+          <div class="nav-btn" onclick="toolQR()"><div class="icon">📱</div><div class="label">QR Generator</div></div>
+        </div>
+        <div id="toolArea" style="margin-top:20px"></div>
+      </div>
+    </div>
+  `;
+}
+window.toolQR = function(){
+  $('toolArea').innerHTML = `<h3>QR Generator</h3><input class="input" id="qrText" placeholder="Enter URL"><button class="btn" onclick="$('qrImg').src='https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent($('qrText').value)">Generate</button><img id="qrImg" style="display:block;margin:20px auto">`;
+}
+
+// ==== KNOWLEDGE, LITERATURE, EVENTS ====
+window.showEvent = function(){ displayContentScreen('events', 'Events'); }
+window.showApp = function(){ displayContentScreen('applications', 'Applications'); }
+window.showKnowledge = function(){ displayContentScreen('knowledge', 'Knowledge'); }
+window.showLiterature = function(){ displayContentScreen('literature', 'Literature'); }
+
+function displayContentScreen(type, title){
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>${title}</span></header>
+      <div class="main-content" id="contentList">Loading...</div>
+    </div>
+  `;
+  loadContentData(type);
+}
+
+function loadContentData(type){
+  onValue(ref(db, type), snap=>{
+    const data = snap.val();
+    let html = '';
+    if(data){
+      Object.entries(data).reverse().forEach(([id,c])=>{
+        if(!c.deleteTime || Date.now() < c.deleteTime){
+          html += `<div class="card"><h3>${c.title}</h3><p>${c.desc}</p></div>`;
+        }
+      });
+    }else html = '<div class="card">No content yet</div>';
+    const cList = $('contentList');
+    if(cList) cList.innerHTML = html;
+  });
+}
+
+// ==== CO PANEL & SUPER CONTROLS ====
+window.showCOPanel = function(){
+  if(!currentUser?.isCO) return toast('Only CO can access');
+  $('app').innerHTML = `
+    <div class="screen active" id="copanel">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button><span>CO Panel</span></header>
+      <div class="main-content">
+        <div class="nav-grid">
+          <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
+          <div class="nav-btn" onclick="coManageUsers()"><div class="icon">⚙️</div><div class="label">Manage Users</div></div>
+          <div class="nav-btn" onclick="coDelNotice()"><div class="icon">🗑️</div><div class="label">Set Notice</div></div>
+          <div class="nav-btn" onclick="coWipeAllChats()" style="background:#ff4444;"><div class="icon">💥</div><div class="label">Wipe Chats</div></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+window.coAddQuest = function(){
+  $('app').innerHTML = `
+    <div class="screen active" id="addQuest">
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Add Quest</span></header>
+      <div class="main-content">
+        <select class="input" id="qType" onchange="window.toggleHintField()">
           <option value="mcq">MCQ</option>
           <option value="vsaq">VSAQ</option>
-          <option value="break_hint">Break Hint (10 hints)</option>
+          <option value="break_hint">Break Hint</option>
           <option value="picture">Picture URL</option>
-          <option value="audio">Audio URL</option>
-          <option value="video">Video URL</option>
-          <option value="learning">Learning URL</option>
         </select>
         <input class="input" id="qQ" placeholder="Question or URL">
-        <input class="input" id="qCoAns" placeholder="CO Answer (Hidden)">
-        <input class="input" id="qHint" placeholder="General Hint (optional)">
-        <input class="input" id="qHints" placeholder="10 Break Hints: h1|h2|h3|...|h10" style="display:none">
-        <input class="input" id="qPoints" type="number" value="10" placeholder="Points">
-        <input class="input" id="qOpt" placeholder="MCQ Options (comma separated)">
+        <input class="input" id="qCoAns" placeholder="CO Answer">
+        <input class="input" id="qHints" placeholder="10 Hints: h1|h2|h3..." style="display:none">
+        <input class="input" id="qPoints" type="number" value="10">
+        <input class="input" id="qOpt" placeholder="Options (comma separated)">
         <button class="btn" onclick="saveQuest()">Save Quest</button>
       </div>
     </div>
   `;
 }
 
+window.toggleHintField = function(){
+  const hintsField = $('qHints');
+  if(hintsField) hintsField.style.display = $('qType').value === 'break_hint' ? 'block' : 'none';
+}
+
 window.saveQuest = async function(){
-  const qType = $('qType').value;
   const quest = {
-    type: qType,
-    question: $('qQ').value,
-    coAnswer: $('qCoAns').value, // CO answer hidden from users
-    hint: $('qHint').value,
-    hints: $('qHints').value, // 10 hints for break_hint
-    points: parseInt($('qPoints').value),
-    options: $('qOpt').value.split(',').map(x=>x.trim()).filter(x=>x),
-    createdAt: Date.now(),
-    createdBy: currentUser.serial
+    type: $('qType').value, question: $('qQ').value, coAnswer: $('qCoAns').value,
+    hints: $('qHints').value, points: parseInt($('qPoints').value),
+    options: $('qOpt').value.split(',').map(x=>x.trim()).filter(x=>x), createdAt: Date.now()
   };
   await push(ref(db, 'quests'), quest);
   toast('Quest added!');
   showCOPanel();
 }
 
-// 3. CO USER MANAGEMENT: SUSPEND + DELETE + 90 DAY INACTIVE CLEANUP
 window.coManageUsers = async function(){
   const snap = await get(ref(db,'users'));
   let html = '<h3>User Management</h3>';
-  const now = Date.now();
-  const ninetyDays = 90 * 24 * 60 * 60 * 1000;
-  
   if(snap.exists()){
     Object.entries(snap.val()).forEach(([serial,u])=>{
-      const inactive = (now - (u.lastActive || 0)) > ninetyDays;
-      html += `
-        <div class="card" style="padding:10px;margin:8px 0">
-          <div>${u.name} - S:${serial} - ${u.isCO?'CO':''}</div>
-          <div style="font-size:12px;color:var(--muted)">Last Active: ${new Date(u.lastActive || 0).toLocaleDateString()}</div>
-          <div style="margin-top:8px;display:flex;gap:8px">
-            <button class="btn" style="width:auto;padding:4px 8px" onclick="toggleSuspend('${serial}',${!u.suspended})">
-              ${u.suspended ? 'Unsuspend' : 'Suspend'}
-            </button>
-            <button class="btn-secondary" style="width:auto;padding:4px 8px" onclick="deleteUser('${serial}')">Delete</button>
-            ${inactive ? '<span style="color:var(--accent2)">90+ days inactive</span>' : ''}
-          </div>
-        </div>
-      `;
+      html += `<div class="card" style="padding:10px;margin:8px 0">
+        <div>${u.name} (S:${serial})</div>
+        <button class="btn" style="width:auto;padding:4px 8px" onclick="deleteUser('${serial}')">Delete</button>
+      </div>`;
     });
   }
-  $('app').innerHTML += `
+  $('app').innerHTML = `
     <div class="screen active">
       <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Manage Users</span></header>
-      <div class="main-content">${html}<button class="btn" onclick="deleteInactiveUsers()">Delete All 90+ Days Inactive</button></div>
+      <div class="main-content">${html}</div>
     </div>
   `;
 }
 
-window.toggleSuspend = async function(serial, suspend){
-  await update(ref(db,'users/'+serial),{suspended:suspend});
-  toast(suspend ? 'User suspended' : 'User unsuspended');
-  coManageUsers();
-}
-
 window.deleteUser = async function(serial){
-  if(!confirm('Delete this user and all data?')) return;
+  if(!confirm('Delete user?')) return;
   await remove(ref(db,'users/'+serial));
-  await remove(ref(db,'friends/'+serial));
-  await remove(ref(db,'requests/'+serial));
-  await remove(ref(db,'quest_answers/'+serial));
-  toast('User deleted');
+  toast('User Deleted');
   coManageUsers();
 }
 
-window.deleteInactiveUsers = async function(){
-  if(!confirm('Delete ALL users inactive for 90+ days?')) return;
-  const snap = await get(ref(db,'users'));
-  const now = Date.now();
-  const ninetyDays = 90 * 24 * 60 * 60 * 1000;
-  let count = 0;
-  if(snap.exists()){
-    for(let [serial,u] of Object.entries(snap.val())){
-      if((now - (u.lastActive || 0)) > ninetyDays && !u.isCO){
-        await remove(ref(db,'users/'+serial));
-        count++;
-      }
-    }
-  }
-  toast(`${count} inactive users deleted`);
+window.coDelNotice = function(){
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent)">← Back</button><span>Set Notice</span></header>
+      <div class="main-content">
+        <input class="input" id="nText" placeholder="Notice text">
+        <button class="btn" onclick="set(ref(ref(db,'notice'),{text:$('nText').value})); toast('Updated')">Update Notice</button>
+      </div>
+    </div>
+  `;
 }
 
-// 4. FIRST CO SETUP WITH PASSWORD SNANDI2009
+window.coWipeAllChats = async function(){
+  if(confirm('Wipe all chats permanently?')){
+    await remove(ref(db, 'chats'));
+    toast('Chats wiped!');
+  }
+}
+
+// ==== SECURITY & THEME ====
 async function checkCOSetup(){
   const snap = await get(ref(db,'users'));
   let hasCO = false;
-  if(snap.exists()){
-    hasCO = Object.values(snap.val()).some(u=>u.isCO);
-  }
-  if(!hasCO){
-    // Show CO setup screen
-    $('app').innerHTML = `
-      <div class="screen active">
-        <div class="card" style="margin-top:50px">
-          <h2>First CO Setup</h2>
-          <p>Enter CO Password to become Chief Operator</p>
-          <input class="input" id="coPass" type="password" placeholder="Enter SNANDI2009">
-          <button class="btn" onclick="claimCO()">Claim CO</button>
-        </div>
+  if(snap.exists()){ hasCO = Object.values(snap.val()).some(u=>u.isCO); }
+  if(!hasCO && currentUser){
+    $('app').innerHTML += `
+      <div class="card" style="margin-top:20px; border: 2px solid var(--accent2)">
+        <h3>First CO Claim Setup</h3>
+        <input class="input" id="coPass" type="password" placeholder="Enter CO Password">
+        <button class="btn" onclick="claimCO()">Claim CO</button>
       </div>
     `;
   }
 }
 
 window.claimCO = async function(){
-  const pass = $('coPass').value;
-  if(pass !== 'SNANDI2009') return toast('Wrong password!');
-  if(!currentUser) return toast('Login first!');
-  await update(ref(db,'users/'+currentUser.serial),{isCO:true});
-  currentUser.isCO = true;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-  toast('You are now CO!');
+  if($('coPass').value === 'SNANDI2009'){
+    await update(ref(db,'users/'+currentUser.serial),{isCO:true});
+    currentUser.isCO = true;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
+    toast('You are now CO!');
+    renderHome();
+  }else{ toast('Wrong Password!'); }
+}
+
+function loadCustomContent(){
+  get(ref(db,'custom_games')).then(gSnap=>{
+    if(gSnap.exists()){
+      Object.entries(gSnap.val()).forEach(([id,g])=>{
+        const grid = document.querySelector('.nav-grid');
+        if(grid) {
+          const btn = document.createElement('div');
+          btn.className = 'nav-btn';
+          btn.innerHTML = `<div class="icon">🎮</div><div class="label">${g.name}</div>`;
+          btn.onclick = ()=>eval(g.code);
+          grid.appendChild(btn);
+        }
+      });
+    }
+  });
+}
+
+window.logout = function(){
+  localStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(TAB_KEY);
+  currentUser = null;
+  renderAuth();
+}
+
+// Initialization
+const saved = localStorage.getItem(STORAGE_KEY);
+if(saved){
+  currentUser = JSON.parse(saved);
   renderHome();
+  checkTabLock();
+  checkBlueLight();
+}else{
+  renderAuth();
 }
 
-// Update renderHome to show CO panel if no CO exists
-const oldRenderHome = window.renderHome;
-window.renderHome = function(){
-  oldRenderHome();
-  checkCOSetup();
-}
-
-// Update lastActive on every action
-async function updateLastActive(){
-  if(currentUser){
-    await update(ref(db,'users/'+currentUser.serial),{lastActive:Date.now()});
-  }
-}
-setInterval(updateLastActive, 60000);
-
-// 5. CO PANEL UPDATE WITH USER MANAGEMENT
-const oldShowCOPanel2 = window.showCOPanel;
-window.showCOPanel = function(){
-  if(!currentUser?.isCO) return toast('Only CO can access');
-  $('app').innerHTML += `
-    <div class="screen active" id="copanel">
-      <header>
-        <button onclick="renderHome()" style="background:none;border:none;color:var(--accent)">← Back</button>
-        <span>CO Panel</span>
-      </header>
-      <div class="main-content">
-        <div class="nav-grid">
-          <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coAddEvent()"><div class="icon">📅</div><div class="label">Add Event</div></div>
-          <div class="nav-btn" onclick="coAddApp()"><div class="icon">📄</div><div class="label">Add Application</div></div>
-          <div class="nav-btn" onclick="coAddKnowledge()"><div class="icon">🧠</div><div class="label">Add Knowledge</div></div>
-          <div class="nav-btn" onclick="coAddLiterature()"><div class="icon">📖</div><div class="label">Add Literature</div></div>
-          <div class="nav-btn" onclick="coAddGame()"><div class="icon">🎮</div><div class="label">Add Game</div></div>
-          <div class="nav-btn" onclick="coAddTool()"><div class="icon">🛠️</div><div class="label">Add Tool</div></div>
-          <div class="nav-btn" onclick="coViewUsers()"><div class="icon">👥</div><div class="label">View Users</div></div>
-          <div class="nav-btn" onclick="coManageUsers()"><div class="icon">⚙️</div><div class="label">Manage Users</div></div>
-          <div class="nav-btn" onclick="coDelNotice()"><div class="icon">🗑️</div><div class="label">Delete Notice</div></div>
-          <div class="nav-btn" onclick="coWipeAllChats()" style="background:#ff4444;"><div class="icon">💥</div><div class="label">Wipe All Chats</div></div>
-          <div class="nav-btn" onclick="coEditScores()"><div class="icon">✏️</div><div class="label">Edit Scores</div></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
+document.addEventListener('contextmenu', e=>e.preventDefault());
 </script>
 </body>
 </html>
