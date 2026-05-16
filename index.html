@@ -18,6 +18,14 @@
   --success:#388e3c;
   --warning:#f57c00;
 }
+/* ডার্ক মোড কালার ভ্যারিয়েবল */
+[data-theme="dark"] {
+  --bg:#121212;
+  --card:#1e1e1e;
+  --text:#f5f5f5;
+  --border:#333333;
+  --muted:#aaaaaa;
+}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;}
 body{
   font-family:'Segoe UI',Roboto,sans-serif;
@@ -27,7 +35,7 @@ body{
 .allow-copy, .allow-copy *, #chatBox, #chatBox *, .literature-text, .literature-text *, .copyable, input, textarea, select {
   -webkit-user-select:text !important;-moz-user-select:text !important;-ms-user-select:text !important;user-select:text !important;
 }
-.container{max-width:600px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);}
+.container{max-width:600px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);position: relative;}
 header{
   background:var(--card); padding:12px 16px;
   border-bottom:1px solid var(--border); position:sticky;top:0;z-index:100;
@@ -72,7 +80,7 @@ header{
 .btn-warning{background:var(--warning)}
 .btn-success{background:var(--success)}
 .input{
-  width:100%;padding:12px; background:#fff; border:1px solid var(--border);
+  width:100%;padding:12px; background:var(--card); border:1px solid var(--border);
   border-radius:8px; color:var(--text); font-size:14px; margin-top:8px;
 }
 textarea.input { resize: vertical; }
@@ -88,6 +96,11 @@ textarea.input { resize: vertical; }
 .bluelight-filter{
   position:fixed;top:0;left:0;right:0;bottom:0; background:rgba(255,140,0,0.1);
   pointer-events:none;z-index:999;display:none;
+}
+/* ব্রাইটনেস ওভারলে */
+.brightness-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0); pointer-events: none; z-index: 9998;
 }
 .switch-link{ display:block;text-align:center;margin-top:15px;color:var(--accent); font-size:13px;text-decoration:underline;cursor:pointer; }
 .form-builder-row{ display:flex;align-items:center;gap:10px;margin-top:8px; }
@@ -105,10 +118,14 @@ th{background:var(--bg);color:var(--accent);}
 .score-control-btn {
   padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid var(--border);
 }
+.battle-q-card {
+  border-left: 4px solid var(--accent2); padding: 10px; margin-bottom: 10px; background: var(--bg); border-radius: 6px;
+}
 </style>
 </head>
 <body>
 <div class="bluelight-filter" id="bluelight"></div>
+<div class="brightness-overlay" id="brightnessLayer"></div>
 <div class="container" id="app"></div>
 
 <script type="module">
@@ -171,6 +188,16 @@ function checkBlueLight(){
 
 function isValidURL(url){
   try{ const u = new URL(url); return u.protocol === 'http:' || u.protocol === 'https:'; }catch{return false}
+}
+
+// থিম এবং ব্রাইটনেস লাইভ লোড লোড মেকানিজম
+function applySavedThemeAndBrightness() {
+  const savedTheme = localStorage.getItem("yc_theme") || "light";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+  
+  const savedVal = localStorage.getItem("yc_brightness") || "100";
+  const opacity = (100 - parseInt(savedVal)) / 100;
+  if($('brightnessLayer')) $('brightnessLayer').style.backgroundColor = `rgba(0, 0, 0, ${opacity * 0.85})`;
 }
 
 // ---- স্মার্ট অ্যান্সার ইভালুয়েশন টুলস ----
@@ -237,6 +264,16 @@ async function runAutoExpiryCheck(){
       }
     });
   }
+  
+  // লাইভ ব্যাটল অটো টাইম এক্সপায়ারি ও ডিলিট চেক
+  const battleSnap = await get(ref(db, 'battles'));
+  if(battleSnap.exists()){
+    Object.entries(battleSnap.val()).forEach(async ([bId, bData]) => {
+      if(bData.endTimestamp && now > bData.endTimestamp){
+        await remove(ref(db, 'battles/' + bId));
+      }
+    });
+  }
 }
 
 function renderAuth(){
@@ -270,7 +307,7 @@ window.toggleAuthMode = function(isRecovery){
 window.login = async function(){
   const name = $('name').value.trim();
   const password = $('password').value.trim();
-  if(!name || !password){ toast('নাম এবং পাসওয়ার্ড দুটোই দেওয়া বাধ্যতামূলক!'); return; }
+  if(!name || !password){ toast('নাম এবং পাসওয়ার্ড দুটোই দেওয়া বাধ্যতামুলক!'); return; }
   
   toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
   try {
@@ -337,6 +374,7 @@ async function syncUserAndRender() {
   });
   checkTabLock();
   checkBlueLight();
+  applySavedThemeAndBrightness();
 }
 
 function renderForcePasswordScreen() {
@@ -392,9 +430,21 @@ function renderHome(){
     </header>
     
     <div class="main-content">
+      <!-- ব্রাইটনেস ও থিম কন্ট্রোল প্যানেল কার্ড -->
+      <div class="card" style="background:var(--card); border:1px solid var(--border);">
+        <h4 style="font-size:13px; margin-bottom:6px;">🌓 Display Settings</h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">
+          <button class="btn btn-secondary" style="margin:0; padding:6px 12px; font-size:12px; width:auto;" onclick="toggleDarkThemeLive()">Toggle Dark Mode</button>
+          <div style="display:flex; align-items:center; gap:6px; flex:1; justify-content:flex-end;">
+            <span style="font-size:11px;">🔆 Brightness:</span>
+            <input type="range" id="brightRange" min="15" max="100" value="${localStorage.getItem('yc_brightness') || 100}" oninput="alterAppBrightnessLive(this.value)" style="width:100px; cursor:pointer;">
+          </div>
+        </div>
+      </div>
+
       <div class="card" style="background:#fffde7; border-left:5px solid var(--warning);">
         <h3 style="color:var(--warning)">📌 নোটিশ বোর্ড (Notice Board)</h3>
-        <p id="boardNoticeText" style="margin-top:8px; font-size:14px; white-space:pre-wrap; line-height:1.4;">কোনো নোটিশ নেই।</p>
+        <p id="boardNoticeText" style="margin-top:8px; font-size:14px; white-space:pre-wrap; line-height:1.4; color:#1a1a1a;">কোনো নোটিশ নেই।</p>
       </div>
 
       <div class="nav-grid">
@@ -420,8 +470,24 @@ function renderHome(){
   updateNetworkStatus();
   loadScrollTagAndNotice();
   checkCOSetup();
+  applySavedThemeAndBrightness();
 }
 window.renderHome = renderHome;
+
+// লাইভ ডার্ক মোড টগল লজিক
+window.toggleDarkThemeLive = function() {
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  const target = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", target);
+  localStorage.setItem("yc_theme", target);
+}
+
+// লাইভ ব্রাইটনেস কন্ট্রোল ওভারলে লজিক
+window.alterAppBrightnessLive = function(val) {
+  localStorage.setItem("yc_brightness", val);
+  const opacity = (100 - parseInt(val)) / 100;
+  if($('brightnessLayer')) $('brightnessLayer').style.backgroundColor = `rgba(0, 0, 0, ${opacity * 0.85})`;
+}
 
 window.showUserProfileScreen = function() {
   if(currentUser?.isBlocked) return renderBlockedScreen();
@@ -441,7 +507,7 @@ window.showUserProfileScreen = function() {
           <h3 style="margin:12px 0 10px 0;">My Profile Details</h3>
           <div class="form-builder-row"><label>নাম:</label><input class="input" id="pName" value="${u.name || ''}" disabled></div>
           <div class="form-builder-row"><label>ক্লাস (Class):</label><input class="input" id="pClass" value="${u.class || ''}" placeholder="পূরণ করো"></div>
-          <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}" placeholder="পূraw করো"></div>
+          <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}" placeholder="পূরণ করো"></div>
           <div class="form-builder-row"><label>বোর্ড (Board):</label><input class="input" id="pBoard" value="${u.board || ''}" placeholder="পূরণ করো"></div>
           <div class="form-builder-row"><label>ঠিকানা:</label><input class="input" id="pAddress" value="${u.address || ''}" placeholder="পূরণ করো"></div>
           <div class="form-builder-row"><label>মোবাইল নং:</label><input class="input" id="pMobile" value="${u.mobile || ''}" placeholder="পূরণ করো"></div>
@@ -583,7 +649,7 @@ function renderBreakHintQuest(id, q) {
       <div class="main-content">
         <div class="card" style="border-top:4px solid var(--warning);">
           <h3 style="color:var(--warning)">Break the Hint Quest 🧠</h3>
-          <p style="margin:10px 0; font-size:14px; font-weight:bold; background:#fff3e0; padding:10px; border-radius:6px;">হিন্ট নাম্বার ${window.currentHintIndex + 1}: ${activeHint}</p>
+          <p style="margin:10px 0; font-size:14px; font-weight:bold; background:#fff3e0; padding:10px; border-radius:6px; color:#1a1a1a;">হিন্ট নাম্বার ${window.currentHintIndex + 1}: ${activeHint}</p>
           <p style="font-size:12px; color:var(--success); font-weight:bold; margin-bottom:10px;">💡 এই হিন্টে সঠিক উত্তর দিলে পাবে: +${pointAward} স্কোর</p>
           
           <input class="input" id="bhAns" placeholder="তোমার গেস করা উত্তরটি লেখো...">
@@ -644,7 +710,7 @@ window.failBreakHintFinal = async function(id) {
 }
 
 window.submitQuestAnswer = async function(id, ans){
-  if(!ans || !ans.trim()) return toast('উত্তর খালি রাখা যাবে না!');
+  if(!ans || !ans.trim()) return toast('উত্তর खाली রাখা যাবে না!');
   
   const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
   if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) {
@@ -655,7 +721,6 @@ window.submitQuestAnswer = async function(id, ans){
   const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
   let targetCorrectAns = q.coAnswer || q.answer || '';
   
-  // MCQ হলে ডাইরেক্ট চেক, VSAQ/Picture হলে স্মার্ট চেক
   let isCorrect = (q.type === 'mcq') ? (ans.toLowerCase().trim() === targetCorrectAns.toLowerCase().trim()) : checkAnswerSmart(ans, targetCorrectAns);
   
   let minusPoints = q.negative ? parseInt(q.negative) : 0;
@@ -774,7 +839,7 @@ function loadGroupChats(){
           html += `
             <div class="card" style="background:#f9f9f9;">
               <div onclick="openGroupChat('${groupId}', '${gData.name}')" style="cursor:pointer; display:inline-block; width:80%;">
-                <strong>💬 ${gData.name}</strong>
+                <strong style="color:#1a1a1a;">💬 ${gData.name}</strong>
               </div>
               ${gData.creator === currentUser.serial || currentUser.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('groups/${groupId}', 'গ্রুপ চ্যাট')">Delete</button>` : ''}
             </div>
@@ -927,34 +992,143 @@ window.sendMsgToCO = async function(){
   $('coChatInput').value = '';
 }
 
+// ---- ইউজার প্যানেল লাইভ ব্যাটল এক্সাম সিস্টেম (Live Battle Window) ----
 window.showBattle = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Live Battle Stream</span></header>
-      <div class="main-content" id="battleList">Loading Battle Stream...</div>
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Live Battle Exam Stream</span></header>
+      <div class="main-content" id="battleList">Loading Active Battle Stream...</div>
     </div>
   `;
-  onValue(ref(db, 'battles'), snap=>{
+  
+  onValue(ref(db, 'battles'), snap => {
     let html = '';
     if(snap.exists()){
-      Object.entries(snap.val()).forEach(([id, b])=>{
+      Object.entries(snap.val()).forEach(([battleId, b]) => {
+        const remainingMs = b.endTimestamp - Date.now();
+        if(remainingMs <= 0) return; // এক্সপায়ার্ড পরীক্ষা স্ক্রিনে দেখাবে না
+        
+        const remainingMinutes = Math.ceil(remainingMs / 60000);
+        
         html += `
-          <div class="card" style="border-left: 5px solid var(--accent2);">
+          <div class="card" style="border-top: 4px solid var(--accent2); background:var(--card);">
             <h3 style="color:var(--accent2)">⚔️ ${b.title}</h3>
-            <p style="margin:6px 0; font-size:14px; white-space:pre-wrap;">${b.desc}</p>
-            <div style="font-size:12px; background:#f5f5f5; padding:8px; border-radius:6px; margin-top:8px;">
-              <div><b>প্রশ্ন টাইপ:</b> ${b.qType || 'সাধারণ'}</div>
-              <div><b>প্রশ্নমান:</b> +${b.points || 0} | <b>নেগেティブ মার্ক:</b> -${b.negative || 0}</div>
-              <div style="color:var(--accent2); font-weight:bold; margin-top:4px;">⏱️ এক্সপায়ার সময়সীমা: ${b.expireTime || 'Not Set'}</div>
-            </div>
-            ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('battles/${id}', 'লাইভ ব্যাটল প্রশ্ন')">Delete</button>` : ''}
+            <p style="font-size:12px; margin:4px 0; color:var(--muted);">⏰ শেষ হতে বাকি: <b>${remainingMinutes} মিনিট</b></p>
+            <hr style="border-color:var(--border); margin:8px 0;">
+            <button class="btn btn-danger" onclick="enterLiveBattleSession('${battleId}')">Enter Live Exam / পরীক্ষায় বসো</button>
+            ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('battles/${battleId}', 'লাইভ ব্যাটল সেট')">Delete</button>` : ''}
           </div>
         `;
       });
-    } else { html = '<div class="card">কোনো লাইভ ব্যাটল কুইজ সেশন উপলব্ধ নেই।</div>'; }
+    }
+    if(!html) html = '<div class="card">বর্তমানে কোনো লাইভ ব্যাটল কুইজ পরীক্ষা চলছে না।</div>';
     if($('battleList')) $('battleList').innerHTML = html;
   });
+}
+
+// লাইভ পরীক্ষার মূল উইন্ডো রেন্ডারিং
+window.enterLiveBattleSession = async function(battleId) {
+  const snap = await get(ref(db, 'battles/' + battleId));
+  if(!snap.exists()) return toast('ব্যাটেল সেশনটি খুঁজে পাওয়া যায়নি!');
+  const b = snap.val();
+  
+  // চেক করা ইউজার আগে সাবমিট করেছে কিনা
+  const checkAns = await get(ref(db, `battle_submissions/${battleId}/${currentUser.serial}`));
+  if(checkAns.exists()){
+    alert('⚠️ তুমি ইতিমধ্যে এই লাইভ ব্যাটল এক্সামে অংশগ্রহণ করেছো! দ্বিতীয়বার অনুমতি নেই।');
+    showBattle(); return;
+  }
+
+  let questionsHTML = '';
+  b.questions.forEach((q, index) => {
+    let inputs = '';
+    if(q.type === 'mcq') {
+      q.options.forEach(opt => {
+        inputs += `
+          <label style="display:block; margin:6px 0; font-size:13px; cursor:pointer;">
+            <input type="radio" name="battle_q_${index}" value="${opt.trim()}"> ${opt.trim()}
+          </label>
+        `;
+      });
+    } else {
+      inputs = `<input type="text" class="input battle-vsaq-input" data-idx="${index}" placeholder="সংক্ষিপ্ত উত্তর টাইপ করো...">`;
+    }
+    
+    questionsHTML += `
+      <div class="battle-q-card">
+        <strong>প্রশ্ন ${index + 1}: ${q.question}</strong>
+        <div style="font-size:11px; color:var(--success); margin:2px 0;">মান: +${q.points} | নেগেティブ: -${q.negative}</div>
+        <div style="margin-top:8px;">${inputs}</div>
+      </div>
+    `;
+  });
+
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><div class="header-top"><span style="font-weight:bold; color:var(--accent2);">🔴 Live: ${b.title}</span></div></header>
+      <div class="main-content">
+        <div class="card" style="background:#fff3e0; color:var(--warning); font-size:12px;">⚠️ ব্যাক বাটনে চাপলে বা পেজ রিফ্রেশ করলে পরীক্ষা ক্যানসেল হয়ে যাবে! নিশ্চিত হয়ে সাবমিট বাটন প্রেস করো।</div>
+        ${questionsHTML}
+        <button class="btn btn-danger" style="margin-top:15px; font-weight:bold; font-size:16px;" onclick="calculateAndSubmitBattleLive('${battleId}')">Submit Exam Papers</button>
+      </div>
+    </div>
+  `;
+}
+
+// লাইভ ব্যাটল খাতা ক্যালকুলেশন ইঞ্জিন
+window.calculateAndSubmitBattleLive = async function(battleId) {
+  const snap = await get(ref(db, 'battles/' + battleId));
+  if(!snap.exists()) return toast('সময় শেষ! পরীক্ষা খাতা জমা নেওয়া সম্ভব নয়।');
+  const b = snap.val();
+  
+  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
+  let currentTotalScore = uCheckSnap.val().score || 0;
+  
+  let totalAwarded = 0;
+  let submissionDetails = {};
+
+  b.questions.forEach((q, index) => {
+    let userAns = "";
+    if(q.type === 'mcq') {
+      const radio = document.querySelector(`input[name="battle_q_${index}"]:checked`);
+      if(radio) userAns = radio.value;
+    } else {
+      const txtInp = document.querySelector(`.battle-vsaq-input[data-idx="${index}"]`);
+      if(txtInp) userAns = txtInp.value.trim();
+    }
+
+    let isCorrect = false;
+    if(q.type === 'mcq') {
+      isCorrect = (userAns.toLowerCase().trim() === q.answer.toLowerCase().trim());
+    } else {
+      isCorrect = checkAnswerSmart(userAns, q.answer);
+    }
+
+    let pts = 0;
+    if(userAns !== "") {
+      pts = isCorrect ? parseInt(q.points) : -parseInt(q.negative);
+    }
+    
+    totalAwarded += pts;
+    submissionDetails[`q_${index}`] = { userAns, isCorrect, pointsEarned: pts };
+  });
+
+  let finalScore = currentTotalScore + totalAwarded;
+  if(finalScore < 0) finalScore = 0;
+
+  // ডাটাবেস এ স্কোর ও সাবমিশন লক করা
+  await set(ref(db, `battle_submissions/${battleId}/${currentUser.serial}`), {
+    studentName: currentUser.name,
+    scoreAwarded: totalAwarded,
+    details: submissionDetails,
+    timestamp: Date.now()
+  });
+  
+  await update(ref(db, 'users/' + currentUser.serial), { score: finalScore });
+  
+  alert(`🏁 পরীক্ষা সফলভাবে সাবমিট হয়েছে!\n\nএই লাইভ ব্যাটল থেকে তোমার প্রাপ্ত নেট স্কোর পরিবর্তন: ${totalAwarded > 0 ? '+' : ''}${totalAwarded}`);
+  showBattle();
 }
 
 // ---- মাল্টিপ্লেয়ার গেমস মেকানিজম পোর্টাল ----
@@ -964,7 +1138,7 @@ window.openMultiplayerGamesMenu = function(friendSerial, friendName) {
       <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Play with ${friendName}</span></header>
       <div class="main-content">
         <div class="card" style="text-align:center; background:#e3f2fd;">
-          <h4>Multiplayer Game Setup Room</h4>
+          <h4 style="color:#1a1a1a;">Multiplayer Game Setup Room</h4>
           <p style="font-size:12px; color:var(--muted); margin-top:4px;">নিচের যেকোনো ২-ডিভাইস মাল্টিপ্লেয়ার গেম চালু করো</p>
         </div>
         <div class="nav-grid" id="multiplayerGamesGrid">Loading 2-Player Games...</div>
@@ -977,7 +1151,6 @@ window.openMultiplayerGamesMenu = function(friendSerial, friendName) {
     if(snap.exists()){
       grid.innerHTML = '';
       Object.entries(snap.val()).forEach(([id, item]) => {
-        // কোডে multiplayer শব্দ ট্র্যাক করা হচ্ছে ২-ডিভাইস সমর্থিত গেম ফিল্টার করতে
         if(item.code.toLowerCase().includes('multiplayer') || item.code.toLowerCase().includes('room') || item.code.toLowerCase().includes('player2')) {
           const btn = document.createElement('div'); btn.className = 'nav-btn';
           btn.innerHTML = `<div class="icon">${item.icon || '🎮'}</div><div class="label">${item.name}</div>`;
@@ -1039,7 +1212,6 @@ function loadDynamicContent(node, gridId, label){
   });
 }
 
-// HTML এবং JS কোড হ্যান্ডল করার জন্য ডায়নামিক ফুলস্ক্রিন স্যান্ডবক্স উইন্ডো ইঞ্জিন
 function launchEngineDynamicSandbox(title, codeString) {
   $('app').innerHTML = `
     <div class="screen active" style="background:#fff; min-height:100vh;">
@@ -1054,10 +1226,8 @@ function launchEngineDynamicSandbox(title, codeString) {
     </div>
   `;
   
-  // কোডটি পিওর HTML নাকি স্ক্রিপ্ট ডিটেক্ট করে রেন্ডার করবে
   if (codeString.trim().startsWith('<') || codeString.toLowerCase().includes('</div>') || codeString.toLowerCase().includes('<style>')) {
     $('sandboxRenderArea').innerHTML = codeString;
-    // ইনজেক্টেড স্ক্রিপ্ট ট্যাগ এক্সিকিউট করার ব্যবস্থা
     const scripts = $('sandboxRenderArea').querySelectorAll("script");
     scripts.forEach(oldScript => {
       const newScript = document.createElement("script");
@@ -1066,7 +1236,6 @@ function launchEngineDynamicSandbox(title, codeString) {
       oldScript.parentNode.replaceChild(newScript, oldScript);
     });
   } else {
-    // স্ক্রিপ্ট রান করানোর জন্য ইভালুয়েশন মেকানিজম
     try {
       let wrapperFunc = new Function(codeString);
       wrapperFunc();
@@ -1124,7 +1293,7 @@ window.showApp = function(){
           ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('applications/${id}', 'অ্যাপ্লিকেশন ফরম')">Delete</button>` : ''}
         </div>`;
       });
-    } else { html = '<div class="card">কোনো অ্যাপ্লিকেশন উপলব্ধ নেই।</div>'; }
+    } else { html = '<div class="card">কোনোアプリケーション উপলব্ধ নেই।</div>'; }
     if($('appList')) $('appList').innerHTML = html;
   });
 }
@@ -1161,11 +1330,9 @@ window.showCOPanel = function(){
       <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>CO Control Center</span></header>
       <div class="main-content">
         
-        <!-- ৫. সার্চ প্রোফাইল মডিউল সেকশন -->
         <div class="card" style="border: 2px dashed var(--accent); background: #f1f8e9;">
           <h3 style="color:var(--accent)">🔍 Search Member Profile (প্রোফাইল অনুসন্ধান)</h3>
-          <p style="font-size:11px; color:var(--muted); margin-bottom:6px;">ইউনিক সিরিয়াল নাম্বার দিয়ে যেকোনো মেম্বারের তথ্য বের করুন</p>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; gap:6px; margin-top:6px;">
             <input class="input" id="searchTargetSerial" placeholder="YC_XXXXXX" style="margin:0;">
             <button class="btn btn-success" style="width:auto; margin:0; padding:0 16px;" onclick="coSearchUserProfile()">Search</button>
           </div>
@@ -1174,7 +1341,7 @@ window.showCOPanel = function(){
 
         <div class="nav-grid">
           <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coAddLiveBattle()"><div class="icon">⚔️</div><div class="label">Add Battle কুইজ</div></div>
+          <div class="nav-btn" onclick="coAddLiveBattle()"><div class="icon">⚔️</div><div class="label">Mega Battle Set</div></div>
           <div class="nav-btn" onclick="coAddDynamic('custom_games', 'Game')"><div class="icon">🎮</div><div class="label">Add Game</div></div>
           <div class="nav-btn" onclick="coAddDynamic('custom_tools', 'Tool')"><div class="icon">🛠️</div><div class="label">Add Tool</div></div>
           <div class="nav-btn" onclick="coAddApplication()"><div class="icon">📄</div><div class="label">Create App Form</div></div>
@@ -1208,21 +1375,20 @@ window.showCOPanel = function(){
   `;
 }
 
-// CO সার্চ মেম্বার প্রোফাইল লজিক এক্সিকিউশন
 window.coSearchUserProfile = async function() {
   const serial = $('searchTargetSerial').value.trim();
   const resArea = $('coSearchResultArea');
   if(!serial) { toast('মেম্বার সিরিয়াল দিন!'); return; }
   
   resArea.style.display = "block";
-  resArea.innerHTML = "অনুসন্ধান করা হচ্ছে...";
+  resArea.innerHTML = " canডল করা হচ্ছে...";
   
   try {
     const snap = await get(ref(db, 'users/' + serial));
     if(snap.exists()) {
       let data = snap.val();
       resArea.innerHTML = `
-        <div style="background:#fff; padding:10px; border-radius:8px; border:1px solid var(--border); line-height:1.5;">
+        <div style="background:var(--card); padding:10px; border-radius:8px; border:1px solid var(--border); line-height:1.5;">
           <div><b>নাম:</b> ${data.name || '-'}</div>
           <div><b>আইডি সিরিয়াল:</b> ${data.serial || '-'}</div>
           <div style="color:var(--accent2); font-weight:bold;"><b>🔒 পাসওয়ার্ড:</b> ${data.password || 'পাসওয়ার্ড সেট নেই'}</div>
@@ -1253,33 +1419,70 @@ window.promoteToCO = async function(){
   else { toast('ভুল সিরিয়াল নাম্বার!'); }
 }
 
+// ---- CO প্যানেল অ্যাডভান্সড মেগা লাইভ ব্যাটল ক্রিয়েটর ----
 window.coAddLiveBattle = function() {
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Create Live Battle</span></header>
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Create Mega Battle Exam</span></header>
       <div class="main-content">
         <div class="card">
-          <h3>নতুন লাইভ ব্যাটল কুইজ যোগ করো</h3>
-          <input class="input" id="btTitle" placeholder="ব্যাটেল শিরোনাম (কুইজ নাম)">
-          <textarea class="input" id="btDesc" rows="4" placeholder="প্রশ্ন এবং অপশনসমূহ বিস্তারিত লেখো..."></textarea>
-          <input class="input" id="btQType" placeholder="প্রশ্নের ধরণ (যেমন: MCQ, VSAQ)">
-          <input class="input" id="btPoints" type="number" placeholder="সঠিক উত্তরের প্লাস পয়েন্ট (যেমন: ১০)">
-          <input class="input" id="btNegative" type="number" placeholder="ভুল উত্তরের মাইনাস পয়েন্ট (যেমন: ৪)">
-          <input class="input" id="btExpire" placeholder="কতক্ষণ থাকবে/সময়সীমা (যেমন: ৫ মিনিট)">
-          <button class="btn btn-danger" onclick="saveLiveBattle()">Publish Live Battle Question</button>
+          <h3>১-ক্লিকে মেগা ব্যাটল প্রশ্নপত্র তৈরি করো ⚔️</h3>
+          <input class="input" id="btMegaTitle" placeholder="ব্যাটেল শিরোনাম (যেমন: জীবন বিজ্ঞান মেগা লাইভ)">
+          <input class="input" id="btMegaDuration" type="number" placeholder="পরীক্ষার মোট সময়সীমা (মিনিট)">
+          
+          <p style="margin-top:12px; font-size:12px; font-weight:bold; color:var(--accent)">📝 প্রশ্নপত্র টাইপ করার গাইড ফরম্যাট:</p>
+          <textarea class="input" id="btMegaRawString" rows="12" style="font-family:monospace; font-size:12px;" placeholder="প্রশ্নের ধরণ|প্রশ্ন|সঠিক উত্তর|অপশনস(শুধুমাত্র MCQ-র জন্য কমা দিয়ে)|প্লাস মার্ক|নেগেটিভ মার্ক&#10;&#10;উদাহরনসমূহ নিচে দেখে হুবহু টাইপ করো:&#10;mcq|ভারতের রাজধানী কোনটি?|নতুন দিল্লি|কলকাতা,নতুন দিল্লি,মুম্বাই,চেন্নাই|10|2&#10;vsaq|মানুষের হৃদপিণ্ডে কয়টি প্রকোষ্ঠ?|৪টি||5|1&#10;mcq|সবচেয়ে হালকা গ্যাস কোনটি?|হাইড্রোজেন|অক্সিজেন,নাইট্রোজেন,হাইড্রোজেন|10|2"></textarea>
+          
+          <button class="btn btn-danger" style="margin-top:10px;" onclick="publishMegaBattleExamEngine()">Publish All Questions Instantly</button>
         </div>
       </div>
     </div>
   `;
 }
-window.saveLiveBattle = async function() {
-  const title = $('btTitle').value.trim(); const desc = $('btDesc').value.trim();
-  const qType = $('btQType').value.trim(); const points = $('btPoints').value.trim();
-  const negative = $('btNegative').value.trim(); const expireTime = $('btExpire').value.trim();
-  
-  if(!title || !desc || !expireTime) return toast('শিরোনাম, বিস্তারিত প্রশ্ন এবং সময়সীমা দেওয়া আবশ্যিক!');
-  await push(ref(db, 'battles'), { title, desc, qType, points, negative, expireTime, createdAt: Date.now() });
-  toast('লাইভ ব্যাটল প্রশ্ন সফলভাবে আপলোড হয়েছে!'); showCOPanel();
+
+// মেগা ব্যাটল কম্পাইলার ইঞ্জিন
+window.publishMegaBattleExamEngine = async function() {
+  const title = $('btMegaTitle').value.trim();
+  const duration = parseInt($('btMegaDuration').value.trim());
+  const rawData = $('btMegaRawString').value.trim();
+
+  if(!title || !duration || !rawData) return toast('সব ঘর সঠিকভাবে পূরণ করো!');
+
+  const lines = rawData.split('\n');
+  let parsedQuestions = [];
+
+  try {
+    lines.forEach(line => {
+      if(!line.trim()) return;
+      const parts = line.split('|');
+      const type = parts[0].trim().toLowerCase();
+      const question = parts[1].trim();
+      const answer = parts[2].trim();
+      const options = parts[3] ? parts[3].split(',') : [];
+      const points = parseInt(parts[4]) || 10;
+      const negative = parseInt(parts[5]) || 0;
+
+      parsedQuestions.push({ type, question, answer, options, points, negative });
+    });
+
+    if(parsedQuestions.length === 0) throw new Error('কোনো প্রশ্ন পাওয়া যায়নি!');
+
+    const endTimestamp = Date.now() + (duration * 60000);
+
+    const battleRef = push(ref(db, 'battles'));
+    await set(battleRef, {
+      title,
+      durationMinutes: duration,
+      endTimestamp,
+      questions: parsedQuestions,
+      createdAt: Date.now()
+    });
+
+    alert(`🎉 সফলভাবে ${parsedQuestions.length}টি প্রশ্ন সম্বলিত মেগা ব্যাটল কুইজ পরীক্ষা লাইভ করা হয়েছে! এটি ঠিক ${duration} মিনিট পর স্বয়ংক্রিয়ভাবে ডিলিট হয়ে যাবে।`);
+    showCOPanel();
+  } catch(e) {
+    alert('❌ প্রশ্নপত্র ফরম্যাটে ভুল রয়েছে! গাইডলাইনটি পুনরায় চেক করে ট্রাই করো।');
+  }
 }
 
 window.coShareLinkScreen = function() {
@@ -1306,7 +1509,7 @@ window.saveSharedLink = async function() {
   toast('লিঙ্কটি সফলভাবে মেম্বারদের জন্য লাইভ করা হয়েছে!'); showCOPanel();
 }
 
-// ৮. মেম্বারদের স্কোর প্লাস/মাইনাস করার আপডেটেড ম্যানেজমেন্ট প্যানেল
+// স্কোর প্যানেল পরিবর্তন সংশোধন (+১ এবং -১ বাটন সংযোজন)
 window.coManageUsers = async function(){
   const snap = await get(ref(db,'users')); 
   let html = '<div class="card"><h3>All Registered Members Directory</h3></div>';
@@ -1318,11 +1521,13 @@ window.coManageUsers = async function(){
           <strong>${u.name}</strong> <small>(${u.isCO ? 'CO' : 'Member'})</small>
           <div style="font-size:12px;" class="copyable">Serial: ${serial} | <b>Score: <span id="scr_${serial}">${u.score || 0}</span></b></div>
           
-          <!-- স্কোর পরিবর্তনের বাটন প্যানেল ইনজেকশন -->
-          <div style="margin-top: 8px; display:flex; gap:6px; align-items:center; background:#f5f5f5; padding:6px; border-radius:6px;">
+          <!-- স্কোর পরিবর্তনের মডিউলে +১ ও -১ বাটন সংযোজন -->
+          <div style="margin-top: 8px; display:flex; gap:4px; align-items:center; background:var(--bg); padding:6px; border-radius:6px; flex-wrap:wrap;">
             <span style="font-size:11px; font-weight:bold;">Score Control:</span>
+            <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 1)">+1</button>
             <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 10)">+10</button>
             <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 50)">+50</button>
+            <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -1)">-1</button>
             <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -10)">-10</button>
             <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -50)">-50</button>
           </div>
@@ -1342,7 +1547,6 @@ window.coManageUsers = async function(){
   $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Manage Users</span></header><div class="main-content">${html}</div></div>`;
 }
 
-// স্কোর পরিবর্তনের রিয়েল-টাইম মেকানিজম লজিক
 window.alterUserScoreLive = async function(serial, amount) {
   try {
     const userRef = ref(db, 'users/' + serial);
@@ -1350,7 +1554,7 @@ window.alterUserScoreLive = async function(serial, amount) {
     if(snap.exists()) {
       let currentScore = snap.val().score || 0;
       let newScore = currentScore + amount;
-      if (newScore < 0) newScore = 0; // স্কোর নেগেটিভ ০ এর নিচে নামবে না
+      if (newScore < 0) newScore = 0; 
       await update(userRef, { score: newScore });
       if($('scr_' + serial)) $('scr_' + serial).textContent = newScore;
       toast(`স্কোর সফলভাবে ${amount > 0 ? '+' : ''}${amount} পরিবর্তন করা হয়েছে!`);
@@ -1426,7 +1630,7 @@ window.coAddQuest = function(){
         </div>
 
         <input class="input" id="qPoints" type="number" value="10" placeholder="প্লাস পয়েন্ট">
-        <input class="input" id="qNegative" type="number" value="0" placeholder="ভুল উত্তরের জন্য মাইনাস পয়েন্ট (নেগেটিভ মার্ক)">
+        <input class="input" id="qNegative" type="number" value="0" placeholder="ভুল উত্তরের জন্য মাইনাস পয়েন্ট (নেগেティブ মার্ক)">
         <button class="btn" onclick="saveQuest()">Publish Quest Live</button>
       </div>
     </div>
