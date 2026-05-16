@@ -100,6 +100,10 @@ th{background:var(--bg);color:var(--accent);}
 .delete-inline-btn {
   position: absolute; top: 10px; right: 10px; background: var(--accent2);
   color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer;
+  z-index: 5;
+}
+.score-control-btn {
+  padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid var(--border);
 }
 </style>
 </head>
@@ -169,6 +173,37 @@ function isValidURL(url){
   try{ const u = new URL(url); return u.protocol === 'http:' || u.protocol === 'https:'; }catch{return false}
 }
 
+// ---- স্মার্ট অ্যান্সার ইভালুয়েশন টুলস ----
+function getLevenshteinDistance(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
+  for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) { matrix[i][j] = matrix[i - 1][j - 1]; }
+      else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+function checkAnswerSmart(userAns, correctAns) {
+  if (!userAns || !correctAns) return false;
+  let u = userAns.toLowerCase().trim().replace(/[\s.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+  let c = correctAns.toLowerCase().trim().replace(/[\s.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+  if (u === c) return true;
+  
+  let maxLen = Math.max(u.length, c.length);
+  if (maxLen === 0) return false;
+  let dist = getLevenshteinDistance(u, c);
+  let similarity = (maxLen - dist) / maxLen;
+  return similarity >= 0.78; 
+}
+
 async function runAutoExpiryCheck(){
   const now = Date.now();
   const todayStr = new Date().toISOString().split('T')[0];
@@ -210,6 +245,7 @@ function renderAuth(){
       <div class="card" style="margin-top:60px" id="authCard">
         <h2 style="text-align:center;margin-bottom:20px;color:var(--accent);">YourChoice</h2>
         <input type="text" class="input" id="name" placeholder="তোমার নাম">
+        <input type="password" class="input" id="password" placeholder="একটি পাসওয়ার্ড তৈরি করো">
         <button class="btn" onclick="login()">Login / Register</button>
         <span class="switch-link" onclick="toggleAuthMode(true)">পুরনো অ্যাকাউন্ট রিকভার করো (Recovery)</span>
       </div>
@@ -222,8 +258,9 @@ window.toggleAuthMode = function(isRecovery){
   if(isRecovery){
     card.innerHTML = `
       <h2 style="text-align:center;margin-bottom:20px;color:var(--accent);">Account Recovery</h2>
-      <p style="font-size:12px; color:var(--muted); text-align:center; margin-bottom:10px;">তোমার পুরনো সিরিয়াল নাম্বারটি নিচে বসাও</p>
-      <input type="text" class="input" id="recoverySerial" placeholder="Old Serial No">
+      <p style="font-size:12px; color:var(--muted); text-align:center; margin-bottom:10px;">তোমার পুরনো সিরিয়াল ও পাসওয়ার্ডটি নিচে বসাও</p>
+      <input type="text" class="input" id="recoverySerial" placeholder="Old Serial No (YC_XXXXXX)">
+      <input type="password" class="input" id="recoveryPass" placeholder="Password">
       <button class="btn" onclick="recoverAccount()">Recover Account</button>
       <span class="switch-link" onclick="renderAuth()">নতুন অ্যাকাউন্ট তৈরি করো (Login)</span>
     `;
@@ -232,7 +269,8 @@ window.toggleAuthMode = function(isRecovery){
 
 window.login = async function(){
   const name = $('name').value.trim();
-  if(!name){ toast('নতুন অ্যাকাউন্ট তৈরির জন্য নাম অবশ্যই লিখতে হবে'); return; }
+  const password = $('password').value.trim();
+  if(!name || !password){ toast('নাম এবং পাসওয়ার্ড দুটোই দেওয়া বাধ্যতামূলক!'); return; }
   
   toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
   try {
@@ -242,7 +280,7 @@ window.login = async function(){
     const generatedSerial = "YC_" + randomPart;
     
     currentUser = {
-      name: name, serial: generatedSerial,
+      name: name, serial: generatedSerial, password: password,
       isCO: false, score: 0,
       createdAt: Date.now(), lastActive: Date.now(),
       isBlocked: false, profileUpdated: false
@@ -257,18 +295,24 @@ window.login = async function(){
 
 window.recoverAccount = async function(){
   const serial = $('recoverySerial').value.trim();
-  if(!serial){ toast('সিরিয়াল নাম্বার দেওয়া বাধ্যতামুলক'); return; }
+  const password = $('recoveryPass').value.trim();
+  if(!serial || !password){ toast('সিরিয়াল এবং পাসওয়ার্ড দেওয়া বাধ্যতামুলক'); return; }
   
   toast('অ্যাকাউন্ট খোঁজা হচ্ছে...');
   try {
     const snap = await get(ref(db, 'users/' + serial));
     if(snap.exists()){
-      currentUser = snap.val();
+      let fetchedUser = snap.val();
+      if(fetchedUser.password && fetchedUser.password !== password) {
+        toast('ভুল পাসওয়ার্ড! আবার চেষ্টা করো।');
+        return;
+      }
+      currentUser = fetchedUser;
       if(currentUser.isBlocked) { renderBlockedScreen(); return; }
       toast('স্বাগতম ফিরে আসার জন্য, ' + currentUser.name);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
       syncUserAndRender();
-    } else { toast('এই সিরিয়াল নাম্বারের কোনো অ্যাকাউন্ট পাওয়া যায়নি বা এটি ডিলিট করা হয়েছে!'); }
+    } else { toast('এই সিরিয়াল নাম্বারের কোনো অ্যাকাউন্ট পাওয়া যায়নি!'); }
   } catch(e) { toast('কানেকশন এরর!'); }
 }
 
@@ -281,6 +325,8 @@ async function syncUserAndRender() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
       if(currentUser.isBlocked) {
         renderBlockedScreen();
+      } else if(!currentUser.password) {
+        renderForcePasswordScreen();
       } else {
         renderHome();
       }
@@ -291,6 +337,26 @@ async function syncUserAndRender() {
   });
   checkTabLock();
   checkBlueLight();
+}
+
+function renderForcePasswordScreen() {
+  $('app').innerHTML = `
+    <div class="screen active">
+      <div class="card" style="margin-top:100px; text-align:center; border-color:var(--warning);">
+        <h2 style="color:var(--warning); margin-bottom:15px;">পাসওয়ার্ড সেট করো 🔒</h2>
+        <p style="font-size:14px; margin-bottom:15px;">তোমার সুরক্ষার স্বার্থে অ্যাকাউন্টে একটি পাসওয়ার্ড সেট করা বাধ্যতামূলক। অন্যথায় অ্যাপ ব্যবহার করা যাবে না।</p>
+        <input type="password" class="input" id="forcePassInput" placeholder="নতুন পাসওয়ার্ড দিন">
+        <button class="btn btn-success" onclick="saveForcedPassword()">Save Password & Enter</button>
+      </div>
+    </div>
+  `;
+}
+
+window.saveForcedPassword = async function() {
+  const p = $('forcePassInput').value.trim();
+  if(!p || p.length < 4) return toast('পাসওয়ার্ড ন্যূনতম ৪ অক্ষরের দিন!');
+  await update(ref(db, 'users/' + currentUser.serial), { password: p });
+  toast('পাসওয়ার্ড সেট সফল হয়েছে!');
 }
 
 function renderBlockedScreen() {
@@ -326,13 +392,11 @@ function renderHome(){
     </header>
     
     <div class="main-content">
-      <!-- নোটিশ বোর্ড সেকশন -->
       <div class="card" style="background:#fffde7; border-left:5px solid var(--warning);">
         <h3 style="color:var(--warning)">📌 নোটিশ বোর্ড (Notice Board)</h3>
         <p id="boardNoticeText" style="margin-top:8px; font-size:14px; white-space:pre-wrap; line-height:1.4;">কোনো নোটিশ নেই।</p>
       </div>
 
-      <!-- মেনু গ্রিড (প্রোফাইল বাটনটি এখানে আইকন সহ নিচে যুক্ত করা হয়েছে) -->
       <div class="nav-grid">
         <div class="nav-btn" onclick="showQuest()"><div class="icon">📚</div><div class="label">Quest</div></div>
         <div class="nav-btn" onclick="showContact()"><div class="icon">👥</div><div class="label">Contact</div></div>
@@ -359,7 +423,6 @@ function renderHome(){
 }
 window.renderHome = renderHome;
 
-// ==== আসল প্রোফাইল পেজ স্ক্রিন লজিক (যা আলাদাভাবে ওপেন হবে) ====
 window.showUserProfileScreen = function() {
   if(currentUser?.isBlocked) return renderBlockedScreen();
   const u = currentUser;
@@ -374,10 +437,11 @@ window.showUserProfileScreen = function() {
       <div class="main-content">
         <div class="card" style="border-left:5px solid var(--accent);">
           <div style="font-size:12px; font-weight:bold; color:var(--muted)">👤 আমার আইডি নাম্বার: <span class="copyable" style="color:var(--accent); font-size:13px;">${u.serial}</span></div>
-          <h3 style="margin:6px 0 10px 0;">My Profile Details</h3>
+          <div style="font-size:12px; font-weight:bold; color:var(--accent2); margin-top:4px;">🔒 পাসওয়ার্ড: <span class="copyable" style="font-size:13px;">${u.password || 'Not Set'}</span></div>
+          <h3 style="margin:12px 0 10px 0;">My Profile Details</h3>
           <div class="form-builder-row"><label>নাম:</label><input class="input" id="pName" value="${u.name || ''}" disabled></div>
           <div class="form-builder-row"><label>ক্লাস (Class):</label><input class="input" id="pClass" value="${u.class || ''}" placeholder="পূরণ করো"></div>
-          <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}" placeholder="পূরণ করো"></div>
+          <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}" placeholder="পূraw করো"></div>
           <div class="form-builder-row"><label>বোর্ড (Board):</label><input class="input" id="pBoard" value="${u.board || ''}" placeholder="পূরণ করো"></div>
           <div class="form-builder-row"><label>ঠিকানা:</label><input class="input" id="pAddress" value="${u.address || ''}" placeholder="পূরণ করো"></div>
           <div class="form-builder-row"><label>মোবাইল নং:</label><input class="input" id="pMobile" value="${u.mobile || ''}" placeholder="পূরণ করো"></div>
@@ -550,7 +614,7 @@ window.submitBreakHintAnswer = async function(id, ans) {
   if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
 
   const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
-  let isCorrect = ans.toLowerCase().trim() === (q.answer || '').toLowerCase().trim();
+  let isCorrect = checkAnswerSmart(ans, q.answer);
   
   if(isCorrect) {
     let finalAwardScore = 10 - window.currentHintIndex;
@@ -563,7 +627,7 @@ window.submitBreakHintAnswer = async function(id, ans) {
     alert(`🎉 সঠিক উত্তর! তুমি ${window.currentHintIndex + 1} নং হিন্টে সফল হয়েছ। স্কোর যোগ হলো: +${finalAwardScore}`);
     showQuest();
   } else {
-    toast('❌ ভুল উত্তর! আবার চেষ্টা করো অথবা পরের হিন্ট দেখবো বাটনে ক্লিক করো।');
+    toast('❌ ভুল বা অমিল উত্তর! আবার চেষ্টা করো অথবা পরের হিন্ট দেখবো বাটনে ক্লিক করো।');
   }
 }
 
@@ -584,12 +648,15 @@ window.submitQuestAnswer = async function(id, ans){
   
   const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
   if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) {
-    alert('তোমার অ্যাকাউন্টটি ব্লকড! তুমি কোনো স্কোর বাড়াতে বা কমাতে পারবে না।');
+    alert('তোমার অ্যাকাউন্টটি ব্লকড!');
     renderBlockedScreen(); return;
   }
 
   const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
-  let isCorrect = ans.toLowerCase().trim() === (q.coAnswer || q.answer || '').toLowerCase().trim();
+  let targetCorrectAns = q.coAnswer || q.answer || '';
+  
+  // MCQ হলে ডাইরেক্ট চেক, VSAQ/Picture হলে স্মার্ট চেক
+  let isCorrect = (q.type === 'mcq') ? (ans.toLowerCase().trim() === targetCorrectAns.toLowerCase().trim()) : checkAnswerSmart(ans, targetCorrectAns);
   
   let minusPoints = q.negative ? parseInt(q.negative) : 0;
   let score = isCorrect ? parseInt(q.points) : -minusPoints;
@@ -599,7 +666,7 @@ window.submitQuestAnswer = async function(id, ans){
   let newTotalScore = (uCheckSnap.val().score || 0) + score;
   await update(ref(db, 'users/' + currentUser.serial), { score: newTotalScore });
   
-  toast(isCorrect ? 'সঠিক উত্তর! পয়েন্ট যোগ হয়েছে।' : `ভুল উত্তর! ${minusPoints} পয়েন্ট কাটা গেল।`);
+  toast(isCorrect ? 'সঠিক উত্তর! পয়েন্ট যোগ হয়েছে।' : `ভুল বা অমিল উত্তর! ${minusPoints} পয়েন্ট কাটা গেল।`);
   showQuest();
 }
 
@@ -669,8 +736,11 @@ function loadFriends(){
         const uSnap = await get(ref(db, 'users/' + fid));
         if(!uSnap.exists()) continue; 
         const uName = uSnap.val().name;
-        html += `<div class="card" onclick="openChat('${fid}', '${uName}')" style="cursor:pointer;">
-          👤 <b>${uName}</b> <small style="color:var(--muted)">(${fid})</small>
+        html += `<div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+          <div onclick="openChat('${fid}', '${uName}')" style="cursor:pointer; flex:1;">
+            👤 <b>${uName}</b> <small style="color:var(--muted)">(${fid})</small>
+          </div>
+          <button class="btn btn-warning" style="width:auto; margin:0; padding:6px 10px; font-size:11px;" onclick="openMultiplayerGamesMenu('${fid}','${uName}')">🎮 Play</button>
         </div>`;
       }
     } else html = '<div style="color:var(--muted); font-size:13px">কোনো বন্ধু তালিকাভুক্ত নেই।</div>';
@@ -723,7 +793,7 @@ window.showFindUser = function(){
     <div class="screen active">
       <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Find Friends</span></header>
       <div class="main-content">
-        <input class="input" id="findSerial" placeholder="সিরিয়াল নাম্বার দিয়ে সার্চ করো..." oninput="filterFriendsList()">
+        <input class="input" id="findSerial" placeholder="সিরিয়াল বা নাম দিয়ে সার্চ করো..." oninput="filterFriendsList()">
         <div id="allUsersList" style="margin-top:15px;">Loading Directory...</div>
       </div>
     </div>
@@ -839,7 +909,7 @@ window.openCOChat = function(){
   $('app').innerHTML = `
     <div class="screen active">
       <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Contact CO Panel</span></header>
-      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto"></div>
+      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto pockets"></div>
       <div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border)">
         <input class="input" id="coChatInput" placeholder="সিও-কে মেসেজ লেখো..." style="margin:0">
         <button class="btn" onclick="sendMsgToCO()" style="width:auto;margin:0">Send</button>
@@ -875,7 +945,7 @@ window.showBattle = function(){
             <p style="margin:6px 0; font-size:14px; white-space:pre-wrap;">${b.desc}</p>
             <div style="font-size:12px; background:#f5f5f5; padding:8px; border-radius:6px; margin-top:8px;">
               <div><b>প্রশ্ন টাইপ:</b> ${b.qType || 'সাধারণ'}</div>
-              <div><b>পূর্ণমান:</b> +${b.points || 0} | <b>নেগেティブ মার্ক:</b> -${b.negative || 0}</div>
+              <div><b>প্রশ্নমান:</b> +${b.points || 0} | <b>নেগেティブ মার্ক:</b> -${b.negative || 0}</div>
               <div style="color:var(--accent2); font-weight:bold; margin-top:4px;">⏱️ এক্সপায়ার সময়সীমা: ${b.expireTime || 'Not Set'}</div>
             </div>
             ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('battles/${id}', 'লাইভ ব্যাটল প্রশ্ন')">Delete</button>` : ''}
@@ -887,16 +957,64 @@ window.showBattle = function(){
   });
 }
 
+// ---- মাল্টিপ্লেয়ার গেমস মেকানিজম পোর্টাল ----
+window.openMultiplayerGamesMenu = function(friendSerial, friendName) {
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Play with ${friendName}</span></header>
+      <div class="main-content">
+        <div class="card" style="text-align:center; background:#e3f2fd;">
+          <h4>Multiplayer Game Setup Room</h4>
+          <p style="font-size:12px; color:var(--muted); margin-top:4px;">নিচের যেকোনো ২-ডিভাইস মাল্টিপ্লেয়ার গেম চালু করো</p>
+        </div>
+        <div class="nav-grid" id="multiplayerGamesGrid">Loading 2-Player Games...</div>
+      </div>
+    </div>
+  `;
+  
+  onValue(ref(db, 'custom_games'), snap => {
+    const grid = $('multiplayerGamesGrid'); if(!grid) return;
+    if(snap.exists()){
+      grid.innerHTML = '';
+      Object.entries(snap.val()).forEach(([id, item]) => {
+        // কোডে multiplayer শব্দ ট্র্যাক করা হচ্ছে ২-ডিভাইস সমর্থিত গেম ফিল্টার করতে
+        if(item.code.toLowerCase().includes('multiplayer') || item.code.toLowerCase().includes('room') || item.code.toLowerCase().includes('player2')) {
+          const btn = document.createElement('div'); btn.className = 'nav-btn';
+          btn.innerHTML = `<div class="icon">${item.icon || '🎮'}</div><div class="label">${item.name}</div>`;
+          btn.onclick = () => {
+            window.activeMatchContext = { friendSerial: friendSerial, friendName: friendName };
+            launchEngineDynamicSandbox(item.name, item.code);
+          };
+          grid.appendChild(btn);
+        }
+      });
+      if(grid.innerHTML === '') grid.innerHTML = '<div class="card" style="grid-column:span 3;">কোনো নির্দিষ্ট মাল্টিপ্লেয়ার গেম পাওয়া যায়নি।</div>';
+    } else { grid.innerHTML = '<div class="card" style="grid-column:span 3;">কোনো গেম লাইভ নেই।</div>'; }
+  });
+}
+
 window.showGames = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Games Corner</span></header><div class="main-content"><div class="nav-grid" id="gamesGrid"></div></div></div>`;
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Games Corner</span></header>
+      <div class="main-content"><div class="nav-grid" id="gamesGrid"></div></div>
+    </div>
+  `;
   loadDynamicContent('custom_games', 'gamesGrid', 'গেম');
 }
+
 window.showTools = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Tools Box</span></header><div class="main-content"><div class="nav-grid" id="toolsGrid"></div></div></div>`;
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Tools Box</span></header>
+      <div class="main-content"><div class="nav-grid" id="toolsGrid"></div></div>
+    </div>
+  `;
   loadDynamicContent('custom_tools', 'toolsGrid', 'টুলস');
 }
+
 function loadDynamicContent(node, gridId, label){
   onValue(ref(db, node), snap=>{
     const grid = $(gridId); if(!grid) return;
@@ -914,15 +1032,53 @@ function loadDynamicContent(node, gridId, label){
           btn.appendChild(delBtn);
         }
         
-        btn.onclick = () => { try { eval(item.code); } catch(e) { alert('কোডে এরর: ' + e.message); } };
+        btn.onclick = () => { launchEngineDynamicSandbox(item.name, item.code); };
         grid.appendChild(btn);
       });
     } else { grid.innerHTML = '<div class="card" style="grid-column:span 3;">কোনো কনটেন্ট নেই।</div>'; }
   });
 }
 
+// HTML এবং JS কোড হ্যান্ডল করার জন্য ডায়নামিক ফুলস্ক্রিন স্যান্ডবক্স উইন্ডো ইঞ্জিন
+function launchEngineDynamicSandbox(title, codeString) {
+  $('app').innerHTML = `
+    <div class="screen active" style="background:#fff; min-height:100vh;">
+      <header style="background:#fff;">
+        <div class="header-top">
+          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;">← Exit Engine</button>
+          <strong style="color:var(--accent); font-size:14px;">${title}</strong>
+          <span></span>
+        </div>
+      </header>
+      <div id="sandboxRenderArea" style="padding:10px;" class="allow-copy"></div>
+    </div>
+  `;
+  
+  // কোডটি পিওর HTML নাকি স্ক্রিপ্ট ডিটেক্ট করে রেন্ডার করবে
+  if (codeString.trim().startsWith('<') || codeString.toLowerCase().includes('</div>') || codeString.toLowerCase().includes('<style>')) {
+    $('sandboxRenderArea').innerHTML = codeString;
+    // ইনজেক্টেড স্ক্রিপ্ট ট্যাগ এক্সিকিউট করার ব্যবস্থা
+    const scripts = $('sandboxRenderArea').querySelectorAll("script");
+    scripts.forEach(oldScript => {
+      const newScript = document.createElement("script");
+      Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+      newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+      oldScript.parentNode.replaceChild(newScript, oldScript);
+    });
+  } else {
+    // স্ক্রিপ্ট রান করানোর জন্য ইভালুয়েশন মেকানিজম
+    try {
+      let wrapperFunc = new Function(codeString);
+      wrapperFunc();
+    } catch(err) {
+      $('sandboxRenderArea').innerHTML = `<div class="card" style="color:var(--accent2)">Runtime Error: ${err.message}</div>`;
+    }
+  }
+}
+
 window.showEvent = function(){ displayContentScreen('events', 'Events'); }
 window.showKnowledge = function(){ displayContentScreen('knowledge', 'Knowledge Feed'); }
+
 function displayContentScreen(type, title){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>${title}</span></header><div class="main-content" id="contentList">Loading Content...</div></div>`;
@@ -950,7 +1106,7 @@ window.showLiterature = function(){
           ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('literature/${id}', 'লিটারেচার')">Delete</button>` : ''}
         </div>`;
       });
-    } else { html = '<div class="card">কোনo লিটারেচার আপলোড করা হয়নি।</div>'; }
+    } else { html = '<div class="card">কোনো লিটারেচার আপলোড করা হয়নি।</div>'; }
     if($('litList')) $('litList').innerHTML = html;
   });
 }
@@ -1004,6 +1160,18 @@ window.showCOPanel = function(){
     <div class="screen active">
       <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>CO Control Center</span></header>
       <div class="main-content">
+        
+        <!-- ৫. সার্চ প্রোফাইল মডিউল সেকশন -->
+        <div class="card" style="border: 2px dashed var(--accent); background: #f1f8e9;">
+          <h3 style="color:var(--accent)">🔍 Search Member Profile (প্রোফাইল অনুসন্ধান)</h3>
+          <p style="font-size:11px; color:var(--muted); margin-bottom:6px;">ইউনিক সিরিয়াল নাম্বার দিয়ে যেকোনো মেম্বারের তথ্য বের করুন</p>
+          <div style="display:flex; gap:6px;">
+            <input class="input" id="searchTargetSerial" placeholder="YC_XXXXXX" style="margin:0;">
+            <button class="btn btn-success" style="width:auto; margin:0; padding:0 16px;" onclick="coSearchUserProfile()">Search</button>
+          </div>
+          <div id="coSearchResultArea" style="margin-top:10px; font-size:13px; display:none;"></div>
+        </div>
+
         <div class="nav-grid">
           <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
           <div class="nav-btn" onclick="coAddLiveBattle()"><div class="icon">⚔️</div><div class="label">Add Battle কুইজ</div></div>
@@ -1032,7 +1200,7 @@ window.showCOPanel = function(){
         
         <div class="card" style="margin-top:15px; border-color:var(--accent2);">
           <h3 style="color:var(--accent2)">Danger Zone</h3>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">কোয়েস্টের সব প্রশ্ন এবং সমস্ত ইউজারের স্কোর ০ করে রিসেট করবে। অ্যাপ্লিকেশন, নোটিশ বা ইউজার ডিলিট হবে না।</p>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">কোয়েস্টের সব প্রশ্ন এবং সমস্ত ইউজারের স্কোর ০ করে রিসেট করবে।</p>
           <button class="btn btn-danger" onclick="triggerSmartQuestReset()">Reset Quests & Scores (Zero Score)</button>
         </div>
       </div>
@@ -1040,11 +1208,42 @@ window.showCOPanel = function(){
   `;
 }
 
+// CO সার্চ মেম্বার প্রোফাইল লজিক এক্সিকিউশন
+window.coSearchUserProfile = async function() {
+  const serial = $('searchTargetSerial').value.trim();
+  const resArea = $('coSearchResultArea');
+  if(!serial) { toast('মেম্বার সিরিয়াল দিন!'); return; }
+  
+  resArea.style.display = "block";
+  resArea.innerHTML = "অনুসন্ধান করা হচ্ছে...";
+  
+  try {
+    const snap = await get(ref(db, 'users/' + serial));
+    if(snap.exists()) {
+      let data = snap.val();
+      resArea.innerHTML = `
+        <div style="background:#fff; padding:10px; border-radius:8px; border:1px solid var(--border); line-height:1.5;">
+          <div><b>নাম:</b> ${data.name || '-'}</div>
+          <div><b>আইডি সিরিয়াল:</b> ${data.serial || '-'}</div>
+          <div style="color:var(--accent2); font-weight:bold;"><b>🔒 পাসওয়ার্ড:</b> ${data.password || 'পাসওয়ার্ড সেট নেই'}</div>
+          <div><b>স্কোর (Score):</b> ${data.score || 0}</div>
+          <div><b>স্ট্যাটাস:</b> ${data.isCO ? 'CO' : 'General Member'}</div>
+          <div><b>ক্লাস:</b> ${data.class || '-'} | <b>স্কুল:</b> ${data.school || '-'}</div>
+          <div><b>বোর্ড:</b> ${data.board || '-'} | <b>ঠিকানা:</b> ${data.address || '-'}</div>
+          <div><b>মোবাইল:</b> ${data.mobile || '-'} | <b>অন্যান্য:</b> ${data.others || '-'}</div>
+        </div>
+      `;
+    } else {
+      resArea.innerHTML = `<span style="color:var(--accent2);">এই সিরিয়ালের কোনো অ্যাকাউন্ট সার্ভারে নেই!</span>`;
+    }
+  } catch(e) { resArea.innerHTML = "সার্ভার এরর!"; }
+}
+
 window.saveScrollTag = async function() {
   const text = $('tagText').value.trim(); const lastDate = $('tagDate').value;
   if(!text || !lastDate) return toast('সব ঘর পূরণ করো!');
   await set(ref(db, 'scroll_tag'), { text, lastDate });
-  toast('实时滚动红线公告已更新!'); showCOPanel();
+  toast('লাল লাইনের স্ক্রল নোটিশ আপডেট হয়েছে!'); showCOPanel();
 }
 
 window.promoteToCO = async function(){
@@ -1066,7 +1265,7 @@ window.coAddLiveBattle = function() {
           <input class="input" id="btQType" placeholder="প্রশ্নের ধরণ (যেমন: MCQ, VSAQ)">
           <input class="input" id="btPoints" type="number" placeholder="সঠিক উত্তরের প্লাস পয়েন্ট (যেমন: ১০)">
           <input class="input" id="btNegative" type="number" placeholder="ভুল উত্তরের মাইনাস পয়েন্ট (যেমন: ৪)">
-          <input class="input" id="btExpire" placeholder="কতক্ষণ থাকবে/এক্সপায়ার সময়সীমা (যেমন: ৫ মিনিট বা ১০টা অব্দি)">
+          <input class="input" id="btExpire" placeholder="কতক্ষণ থাকবে/সময়সীমা (যেমন: ৫ মিনিট)">
           <button class="btn btn-danger" onclick="saveLiveBattle()">Publish Live Battle Question</button>
         </div>
       </div>
@@ -1079,7 +1278,6 @@ window.saveLiveBattle = async function() {
   const negative = $('btNegative').value.trim(); const expireTime = $('btExpire').value.trim();
   
   if(!title || !desc || !expireTime) return toast('শিরোনাম, বিস্তারিত প্রশ্ন এবং সময়সীমা দেওয়া আবশ্যিক!');
-  
   await push(ref(db, 'battles'), { title, desc, qType, points, negative, expireTime, createdAt: Date.now() });
   toast('লাইভ ব্যাটল প্রশ্ন সফলভাবে আপলোড হয়েছে!'); showCOPanel();
 }
@@ -1108,6 +1306,7 @@ window.saveSharedLink = async function() {
   toast('লিঙ্কটি সফলভাবে মেম্বারদের জন্য লাইভ করা হয়েছে!'); showCOPanel();
 }
 
+// ৮. মেম্বারদের স্কোর প্লাস/মাইনাস করার আপডেটেড ম্যানেজমেন্ট প্যানেল
 window.coManageUsers = async function(){
   const snap = await get(ref(db,'users')); 
   let html = '<div class="card"><h3>All Registered Members Directory</h3></div>';
@@ -1117,7 +1316,17 @@ window.coManageUsers = async function(){
       html += `
         <div class="card" style="border-left: 5px solid ${u.isBlocked?'var(--accent2)':'var(--success)'}">
           <strong>${u.name}</strong> <small>(${u.isCO ? 'CO' : 'Member'})</small>
-          <div style="font-size:12px;" class="copyable">Serial: ${serial} | Score: ${u.score || 0}</div>
+          <div style="font-size:12px;" class="copyable">Serial: ${serial} | <b>Score: <span id="scr_${serial}">${u.score || 0}</span></b></div>
+          
+          <!-- স্কোর পরিবর্তনের বাটন প্যানেল ইনজেকশন -->
+          <div style="margin-top: 8px; display:flex; gap:6px; align-items:center; background:#f5f5f5; padding:6px; border-radius:6px;">
+            <span style="font-size:11px; font-weight:bold;">Score Control:</span>
+            <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 10)">+10</button>
+            <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 50)">+50</button>
+            <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -10)">-10</button>
+            <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -50)">-50</button>
+          </div>
+
           <div class="flex-actions" style="margin-top:10px;">
             <button class="btn btn-secondary" onclick="openCOReplyStream('${serial}','${u.name}')">Message</button>
             ${u.isBlocked ? 
@@ -1133,17 +1342,33 @@ window.coManageUsers = async function(){
   $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Manage Users</span></header><div class="main-content">${html}</div></div>`;
 }
 
+// স্কোর পরিবর্তনের রিয়েল-টাইম মেকানিজম লজিক
+window.alterUserScoreLive = async function(serial, amount) {
+  try {
+    const userRef = ref(db, 'users/' + serial);
+    const snap = await get(userRef);
+    if(snap.exists()) {
+      let currentScore = snap.val().score || 0;
+      let newScore = currentScore + amount;
+      if (newScore < 0) newScore = 0; // স্কোর নেগেটিভ ০ এর নিচে নামবে না
+      await update(userRef, { score: newScore });
+      if($('scr_' + serial)) $('scr_' + serial).textContent = newScore;
+      toast(`স্কোর সফলভাবে ${amount > 0 ? '+' : ''}${amount} পরিবর্তন করা হয়েছে!`);
+    }
+  } catch(e) { toast('স্কোর আপডেট ব্যর্থ হয়েছে!'); }
+}
+
 window.toggleBlockUser = async function(serial, shouldBlock) {
   await update(ref(db, 'users/' + serial), { isBlocked: shouldBlock });
   toast(shouldBlock ? 'ইউজারকে ব্লক করা হয়েছে!' : 'ইউজার আনব্লকড!'); coManageUsers();
 }
 
 window.executePermanentDeleteUser = function(serial, name) {
-  if(confirm(`⚠️ অত্যন্ত মারাত্মক সতর্কবার্তা!\n\nতুমি কি সত্যিই মেম্বার ${name} (S: ${serial}) এর অ্যাকাউন্টটি চিরতরে ডাটাবেস থেকে ডিলিট করতে চাও? সে আর কোনোদিন এই আইডি রিকভার করতে পারবে না।`)) {
+  if(confirm(`⚠️ অত্যন্ত মারাত্মক সতর্কবার্তা!\n\nতুমি কি সত্যিই মেম্বার ${name} এর অ্যাকাউন্টটি চিরতরে ডাটাবেস থেকে ডিলিট করতে চাও?`)) {
     remove(ref(db, 'users/' + serial)).then(() => {
       remove(ref(db, 'friends/' + serial));
       remove(ref(db, 'co_messages/' + serial));
-      toast('অ্যাকাউন্টটি চিরকালের জন্য মুছে ফেলা হয়েছে!');
+      toast('অ্যাকাউন্টটি মুছে ফেলা হয়েছে!');
       coManageUsers();
     });
   }
@@ -1197,7 +1422,7 @@ window.coAddQuest = function(){
         
         <div id="hintInputsContainer" style="display:none; margin-top:10px;">
           <label style="font-size:12px; font-weight:bold; color:var(--warning);">১০টি হিন্ট ইনপুট দিন (পাইপ চিহ্ন | দিয়ে আলাদা করুন):</label>
-          <textarea class="input" id="qHints" rows="4" placeholder="হিন্ট১|হিন্ট২|হিন্ট৩|হিন্ট৪|হিন্ট৫|হিন্ট৬|হিন্ট৭|হিন্ট৮|হিন্ট৯|হিন্ট১০"></textarea>
+          <textarea class="input" id="qHints" rows="4" placeholder="হিন্ট১|হিন্ট২|হিন্ট৩..."></textarea>
         </div>
 
         <input class="input" id="qPoints" type="number" value="10" placeholder="প্লাস পয়েন্ট">
@@ -1218,7 +1443,6 @@ window.saveQuest = async function(){
   const hints = $('qHints') ? $('qHints').value.trim() : "";
 
   if(!question || !answer) return toast('প্রশ্ন ও সঠিক উত্তর দেওয়া আবশ্যিক!');
-  
   await push(ref(db, 'quests'), { type, question, answer, options, points, negative, hints, createdAt: Date.now() });
   toast('নতুন কুইজ প্রশ্ন লাইভ এড হয়েছে!'); showCOPanel();
 }
@@ -1301,7 +1525,7 @@ window.coAddDynamic = function(node, label){
       <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Add Custom ${label}</span></header>
       <div class="main-content">
         <input class="input" id="dynName" placeholder="${label} Name"><input class="input" id="dynIcon" placeholder="Emoji Icon">
-        <textarea class="input" id="dynCode" rows="8" placeholder="JavaScript Code লিখুন" style="height:150px; font-family:monospace;"></textarea>
+        <textarea class="input" id="dynCode" rows="8" placeholder="HTML কোড বা জাভাস্ক্রিপ্ট কোড পেস্ট করুন..." style="height:150px; font-family:monospace;"></textarea>
         <button class="btn" onclick="saveDynamic('${node}')">Publish ${label}</button>
       </div>
     </div>
@@ -1317,7 +1541,6 @@ window.saveDynamic = async function(node){
 window.triggerSmartQuestReset = async function() {
   if(confirm('⚠️ তুমি কি নিশ্চিত যে অ্যাপ্লিকেশন, নোটিশ, লিটারেচার ও ইউজার লিস্ট সম্পূর্ণ অক্ষুণ্ণ রেখে শুধুমাত্র কোয়েস্টের সকল প্রশ্ন এবং সমস্ত ইউজারের স্কোর শূন্য (০) করতে চাও?')) {
     toast('রিসেট প্রক্রিয়া চলছে...');
-    
     await remove(ref(db, 'quests'));
     await remove(ref(db, 'quest_answers'));
     
@@ -1328,13 +1551,11 @@ window.triggerSmartQuestReset = async function() {
         await update(ref(db, 'users/' + uid), { score: 0 });
       }
     }
-    
     if(currentUser) {
       currentUser.score = 0;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
     }
-    
-    alert('কোয়েস্টের সমস্ত প্রশ্ন ডিলিট হয়েছে এবং সবার স্কোর সফলভাবে ০ করা হয়েছে!');
+    alert('কোয়েস্ট রিসেট সফল!');
     window.location.reload();
   }
 }
@@ -1355,7 +1576,7 @@ window.claimCO = async function(){
 }
 
 window.logoutWithNotice = function(){
-  if(confirm("⚠️ লগআউট করলে পরবর্তীতে ব্যাক করার জন্য সিরিয়াল নাম্বার দিয়ে Recovery করতে হবে।")){
+  if(confirm("⚠️ লগআউট করলে পরবর্তীতে ব্যাক করার জন্য সিরিয়াল নাম্বার ও পাসওয়ার্ড দিয়ে Recovery করতে হবে।")){
     localStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(TAB_KEY); currentUser = null; renderAuth(); toast('লগআউট সফল!');
   }
 }
