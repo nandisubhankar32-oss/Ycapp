@@ -592,7 +592,7 @@ window.submitQuestAnswer = async function(id, ans){
   let newTotalScore = (uCheckSnap.val().score || 0) + score;
   await update(ref(db, 'users/' + currentUser.serial), { score: newTotalScore });
   
-  toast(isCorrect ? 'سঠিক উত্তর! পয়েন্ট যোগ হয়েছে।' : `ভুল উত্তর! ${minusPoints} পয়েন্ট কাটা গেল।`);
+  toast(isCorrect ? 'সঠিক উত্তর! পয়েন্ট যোগ হয়েছে।' : `ভুল উত্তর! ${minusPoints} পয়েন্ট কাটা গেল।`);
   showQuest();
 }
 
@@ -951,7 +951,7 @@ window.showLiterature = function(){
           ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('literature/${id}', 'লিটারেচার')">Delete</button>` : ''}
         </div>`;
       });
-    } else { html = '<div class="card">কোনো লিটারেচার আপলোড করা হয়নি।</div>'; }
+    } else { html = '<div class="card">কোনo লিটারেচার আপলোড করা হয়নি।</div>'; }
     if($('litList')) $('litList').innerHTML = html;
   });
 }
