@@ -141,7 +141,6 @@ function toast(msg){
 }
 window.toast = toast;
 
-// টেক্সট এরিয়া ও ইনপুটে এন্টার বাটন প্রেস করলে কার্সার নিচে নামানোর গ্লোবাল লজিক
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
     e.stopPropagation(); 
@@ -170,24 +169,20 @@ function isValidURL(url){
   try{ const u = new URL(url); return u.protocol === 'http:' || u.protocol === 'https:'; }catch{return false}
 }
 
-// অটোমেটিক এক্সপায়ারি ক্লিনআপ সিস্টেম
 async function runAutoExpiryCheck(){
   const now = Date.now();
   const todayStr = new Date().toISOString().split('T')[0];
   
-  // ১. স্ক্রল ট্যাগ নোটিশ এক্সপায়ারি চেক ও ডিলিট
   const tagSnap = await get(ref(db, 'scroll_tag'));
   if(tagSnap.exists() && tagSnap.val().lastDate && tagSnap.val().lastDate < todayStr){
     await remove(ref(db, 'scroll_tag'));
   }
 
-  // ২. নোটিশ বোর্ড এক্সপায়ারি চেক ও ডিলিট
   const noticeSnap = await get(ref(db, 'notice_board'));
   if(noticeSnap.exists() && noticeSnap.val().lastDate && noticeSnap.val().lastDate < todayStr){
     await remove(ref(db, 'notice_board'));
   }
 
-  // ৩. অ্যাপ্লিকেশন এক্সপায়ারি চেক ও ডিলিট
   const appsSnap = await get(ref(db, 'applications'));
   if(appsSnap.exists()){
     Object.entries(appsSnap.val()).forEach(async ([id, app]) => {
@@ -198,7 +193,6 @@ async function runAutoExpiryCheck(){
     });
   }
 
-  // ৪. লিটারেচার ৯০ দিন রুল চেক ও ডিলিট
   const litSnap = await get(ref(db, 'literature'));
   if(litSnap.exists()){
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
@@ -338,23 +332,7 @@ function renderHome(){
         <p id="boardNoticeText" style="margin-top:8px; font-size:14px; white-space:pre-wrap; line-height:1.4;">কোনো নোটিশ নেই।</p>
       </div>
 
-      <!-- প্রোফাইল বার সেকশন -->
-      <div class="card" style="border-left:5px solid var(--accent);">
-        <div style="font-size:12px; font-weight:bold; color:var(--muted)">👤 আমার আইডি নাম্বার: <span class="copyable" style="color:var(--accent); font-size:13px;">${u.serial}</span></div>
-        <h3 style="margin:6px 0 10px 0;">My Profile Details</h3>
-        <div class="form-builder-row"><label>নাম:</label><input class="input" id="pName" value="${u.name || ''}" disabled></div>
-        <div class="form-builder-row"><label>ক্লাস (Class):</label><input class="input" id="pClass" value="${u.class || ''}" placeholder="পূরণ করো"></div>
-        <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}" placeholder="পূরণ করো"></div>
-        <div class="form-builder-row"><label>বোর্ড (Board):</label><input class="input" id="pBoard" value="${u.board || ''}" placeholder="পূরণ করো"></div>
-        <div class="form-builder-row"><label>ঠিকানা:</label><input class="input" id="pAddress" value="${u.address || ''}" placeholder="পূরণ করো"></div>
-        <div class="form-builder-row"><label>মোবাইল নং:</label><input class="input" id="pMobile" value="${u.mobile || ''}" placeholder="পূরণ করো"></div>
-        <div class="form-builder-row"><label>অন্যান্য:</label><input class="input" id="pOthers" value="${u.others || ''}" placeholder="পূরণ করো"></div>
-        <p style="font-size:11px; color:var(--accent2); margin-top:8px; font-weight:bold;">* দ্বিতীয়বার বা তার পরে প্রোফাইল আপডেট করলে ৫০ স্কোর কাটা যাবে।</p>
-        <button class="btn btn-success" onclick="saveUserProfile()">Save Profile Data</button>
-        <button class="btn btn-danger" style="margin-top:8px;" onclick="logoutWithNotice()">Log Out</button>
-      </div>
-
-      <!-- মেনু গ্রিড -->
+      <!-- মেনু গ্রিড (প্রোফাইল বাটনটি এখানে আইকন সহ নিচে যুক্ত করা হয়েছে) -->
       <div class="nav-grid">
         <div class="nav-btn" onclick="showQuest()"><div class="icon">📚</div><div class="label">Quest</div></div>
         <div class="nav-btn" onclick="showContact()"><div class="icon">👥</div><div class="label">Contact</div></div>
@@ -365,6 +343,7 @@ function renderHome(){
         <div class="nav-btn" onclick="showApp()"><div class="icon">📄</div><div class="label">Application</div></div>
         <div class="nav-btn" onclick="showKnowledge()"><div class="icon">🧠</div><div class="label">Knowledge</div></div>
         <div class="nav-btn" onclick="showLiterature()"><div class="icon">📖</div><div class="label">Literature</div></div>
+        <div class="nav-btn" onclick="showUserProfileScreen()"><div class="icon">👤</div><div class="label">Profile</div></div>
         <div class="nav-grid" style="grid-column: span 3; margin-top:0;"><div class="nav-btn" style="grid-column: span 3;" onclick="showLinksScreen()"><div class="icon">🔗</div><div class="label">Important Links Portal</div></div></div>
       </div>
     </div>
@@ -380,6 +359,38 @@ function renderHome(){
 }
 window.renderHome = renderHome;
 
+// ==== আসল প্রোফাইল পেজ স্ক্রিন লজিক (যা আলাদাভাবে ওপেন হবে) ====
+window.showUserProfileScreen = function() {
+  if(currentUser?.isBlocked) return renderBlockedScreen();
+  const u = currentUser;
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header>
+        <div class="header-top">
+          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;">← Back</button>
+          <span>My Profile</span><span></span>
+        </div>
+      </header>
+      <div class="main-content">
+        <div class="card" style="border-left:5px solid var(--accent);">
+          <div style="font-size:12px; font-weight:bold; color:var(--muted)">👤 আমার আইডি নাম্বার: <span class="copyable" style="color:var(--accent); font-size:13px;">${u.serial}</span></div>
+          <h3 style="margin:6px 0 10px 0;">My Profile Details</h3>
+          <div class="form-builder-row"><label>নাম:</label><input class="input" id="pName" value="${u.name || ''}" disabled></div>
+          <div class="form-builder-row"><label>ক্লাস (Class):</label><input class="input" id="pClass" value="${u.class || ''}" placeholder="পূরণ করো"></div>
+          <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}" placeholder="পূরণ করো"></div>
+          <div class="form-builder-row"><label>বোর্ড (Board):</label><input class="input" id="pBoard" value="${u.board || ''}" placeholder="পূরণ করো"></div>
+          <div class="form-builder-row"><label>ঠিকানা:</label><input class="input" id="pAddress" value="${u.address || ''}" placeholder="পূরণ করো"></div>
+          <div class="form-builder-row"><label>মোবাইল নং:</label><input class="input" id="pMobile" value="${u.mobile || ''}" placeholder="পূরণ করো"></div>
+          <div class="form-builder-row"><label>অন্যান্য:</label><input class="input" id="pOthers" value="${u.others || ''}" placeholder="পূরণ করো"></div>
+          <p style="font-size:11px; color:var(--accent2); margin-top:8px; font-weight:bold;">* দ্বিতীয়বার বা তার পরে প্রোফাইল আপডেট করলে ৫০ স্কোর কাটা যাবে।</p>
+          <button class="btn btn-success" onclick="saveUserProfile()">Save Profile Data</button>
+          <button class="btn btn-danger" style="margin-top:8px;" onclick="logoutWithNotice()">Log Out</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function updateNetworkStatus(){
   const dot = $('netDot'); if(!dot) return;
   window.addEventListener('online', ()=>dot.classList.remove('offline'));
@@ -388,19 +399,16 @@ function updateNetworkStatus(){
 }
 
 function loadScrollTagAndNotice(){
-  // স্ক্রল লাল লাইন লোড লজিক
   onValue(ref(db, 'scroll_tag'), snap=>{
     const data = snap.val(); const element = $('noticeText');
     if(data && element) element.textContent = data.text || 'Welcome!';
   });
-  // নোটিশ বোর্ড কন্টেন্ট লোড
   onValue(ref(db, 'notice_board'), snap=>{
     const data = snap.val(); const element = $('boardNoticeText');
     if(data && element) element.textContent = data.text || 'বর্তমানে কোনো নোটিশ নেই।';
   });
 }
 
-// ==== প্রোফাইল সেভ লজিক (ভ্যালিডেশন এবং স্কোর ডিডাকশন সহ) ====
 window.saveUserProfile = async function() {
   const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
   if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
@@ -433,7 +441,6 @@ window.saveUserProfile = async function() {
   await update(ref(db, 'users/' + currentUser.serial), updates);
 }
 
-// ==== QUEST SYSTEM WITH BREAK THE HINT & NEgATIVE MARKING ====
 window.showQuest = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `
@@ -596,7 +603,6 @@ window.submitQuestAnswer = async function(id, ans){
   showQuest();
 }
 
-// ==== LINKS SYSTEM LINK PORTAL ====
 window.showLinksScreen = function() {
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `
@@ -623,7 +629,6 @@ window.showLinksScreen = function() {
   });
 }
 
-// ==== GLOBAL IN-PLACE LIVE DELETE ENGINE ====
 window.deleteItemLive = function(dbNodePath, itemLabel) {
   if(confirm(`⚠️ তুমি কি নিশ্চিত যে এই ${itemLabel}টি সার্ভার থেকে চিরতরে ডিলিট করতে চাও?`)) {
     remove(ref(db, dbNodePath)).then(() => {
@@ -634,7 +639,6 @@ window.deleteItemLive = function(dbNodePath, itemLabel) {
   }
 }
 
-// ==== CONTACT & CHATS ====
 window.showContact = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `
@@ -853,7 +857,6 @@ window.sendMsgToCO = async function(){
   $('coChatInput').value = '';
 }
 
-// ==== REAL-TIME LIVE BATTLE STREAM ====
 window.showBattle = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `
@@ -872,7 +875,7 @@ window.showBattle = function(){
             <p style="margin:6px 0; font-size:14px; white-space:pre-wrap;">${b.desc}</p>
             <div style="font-size:12px; background:#f5f5f5; padding:8px; border-radius:6px; margin-top:8px;">
               <div><b>প্রশ্ন টাইপ:</b> ${b.qType || 'সাধারণ'}</div>
-              <div><b>পূর্ণমান:</b> +${b.points || 0} | <b>নেগেটিভ মার্ক:</b> -${b.negative || 0}</div>
+              <div><b>পূর্ণমান:</b> +${b.points || 0} | <b>নেগেティブ মার্ক:</b> -${b.negative || 0}</div>
               <div style="color:var(--accent2); font-weight:bold; margin-top:4px;">⏱️ এক্সপায়ার সময়সীমা: ${b.expireTime || 'Not Set'}</div>
             </div>
             ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('battles/${id}', 'লাইভ ব্যাটল প্রশ্ন')">Delete</button>` : ''}
@@ -884,7 +887,6 @@ window.showBattle = function(){
   });
 }
 
-// ==== DYNAMIC GAMES & TOOLS ====
 window.showGames = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Games Corner</span></header><div class="main-content"><div class="nav-grid" id="gamesGrid"></div></div></div>`;
@@ -904,7 +906,6 @@ function loadDynamicContent(node, gridId, label){
         const btn = document.createElement('div'); btn.className = 'nav-btn'; btn.style.position = 'relative';
         btn.innerHTML = `<div class="icon">${item.icon || '⚙️'}</div><div class="label">${item.name}</div>`;
         
-        // সিওদের জন্য ইন-প্লেস ডিলিট বাটন
         if(currentUser?.isCO) {
           let delBtn = document.createElement('button');
           delBtn.className = 'delete-inline-btn'; delBtn.style.top = '2px'; delBtn.style.right = '2px';
@@ -920,7 +921,6 @@ function loadDynamicContent(node, gridId, label){
   });
 }
 
-// ==== DISPLAY CONTENT SCREENS (EVENT, KNOWLEDGE) ====
 window.showEvent = function(){ displayContentScreen('events', 'Events'); }
 window.showKnowledge = function(){ displayContentScreen('knowledge', 'Knowledge Feed'); }
 function displayContentScreen(type, title){
@@ -939,7 +939,6 @@ function displayContentScreen(type, title){
   });
 }
 
-// ==== LITERATURE ====
 window.showLiterature = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Literature Wall</span></header><div class="main-content" id="litList">Loading Library...</div></div>`;
@@ -956,7 +955,6 @@ window.showLiterature = function(){
   });
 }
 
-// ==== APPLICATION SYSTEM ====
 window.showApp = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
   $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Applications Forms</span></header><div class="main-content" id="appList">Loading Forms...</div></div>`;
@@ -1000,7 +998,6 @@ window.submitAppForm = async function(appId){
   toast('সফলভাবে সাবমিট হয়েছে!'); showApp();
 }
 
-// ==== CO PANEL CONTROL CENTER ====
 window.showCOPanel = function(){
   if(!currentUser?.isCO) return toast('শুধুমাত্র সিওরা এই প্যানেলে ঢুকতে পারবে!');
   $('app').innerHTML = `
@@ -1047,7 +1044,7 @@ window.saveScrollTag = async function() {
   const text = $('tagText').value.trim(); const lastDate = $('tagDate').value;
   if(!text || !lastDate) return toast('সব ঘর পূরণ করো!');
   await set(ref(db, 'scroll_tag'), { text, lastDate });
-  toast('স্ক্রল লাল লাইনের লেখা আপডেট হয়েছে!'); showCOPanel();
+  toast('实时滚动红线公告已更新!'); showCOPanel();
 }
 
 window.promoteToCO = async function(){
@@ -1057,7 +1054,6 @@ window.promoteToCO = async function(){
   else { toast('ভুল সিরিয়াল নাম্বার!'); }
 }
 
-// ==== CO ADD LIVE BATTLE QUESTION ====
 window.coAddLiveBattle = function() {
   $('app').innerHTML = `
     <div class="screen active">
@@ -1088,7 +1084,6 @@ window.saveLiveBattle = async function() {
   toast('লাইভ ব্যাটল প্রশ্ন সফলভাবে আপলোড হয়েছে!'); showCOPanel();
 }
 
-// ==== CO SHARE LINK PORTAL ====
 window.coShareLinkScreen = function() {
   $('app').innerHTML = `
     <div class="screen active">
@@ -1113,7 +1108,6 @@ window.saveSharedLink = async function() {
   toast('লিঙ্কটি সফলভাবে মেম্বারদের জন্য লাইভ করা হয়েছে!'); showCOPanel();
 }
 
-// ==== CO MANAGE USERS SCREEN (BLOCK & PERMANENT DELETE) ====
 window.coManageUsers = async function(){
   const snap = await get(ref(db,'users')); 
   let html = '<div class="card"><h3>All Registered Members Directory</h3></div>';
@@ -1155,7 +1149,6 @@ window.executePermanentDeleteUser = function(serial, name) {
   }
 }
 
-// ==== CO ADD CONTENT (NOTICE BOARD & OTHER FEEDS) ====
 window.coAddContent = function(){
   $('app').innerHTML = `
     <div class="screen active">
@@ -1192,7 +1185,6 @@ window.saveContent = async function(){
   toast('কনটেন্ট পাবলিশ হয়েছে!'); showCOPanel();
 }
 
-// ==== CO ADD QUEST (WITH VARIABLE NEGATIVE MARKING & 10 HINTS SETUP) ====
 window.coAddQuest = function(){
   $('app').innerHTML = `
     <div class="screen active">
@@ -1322,16 +1314,13 @@ window.saveDynamic = async function(node){
   toast('লাইভ পাবলিশ হয়েছে!'); showCOPanel();
 }
 
-// ==== ফিক্সড স্পেসিফিক কোয়েস্ট ও স্কোর রিসেট বাটন লজিক ====
 window.triggerSmartQuestReset = async function() {
   if(confirm('⚠️ তুমি কি নিশ্চিত যে অ্যাপ্লিকেশন, নোটিশ, লিটারেচার ও ইউজার লিস্ট সম্পূর্ণ অক্ষুণ্ণ রেখে শুধুমাত্র কোয়েস্টের সকল প্রশ্ন এবং সমস্ত ইউজারের স্কোর শূন্য (০) করতে চাও?')) {
     toast('রিসেট প্রক্রিয়া চলছে...');
     
-    // ১. কোয়েস্ট এবং তাদের উত্তর ডিলিট
     await remove(ref(db, 'quests'));
     await remove(ref(db, 'quest_answers'));
     
-    // ২. সকল ইউজারের ডেটাবেস স্কোর ০ করা
     const usersSnap = await get(ref(db, 'users'));
     if(usersSnap.exists()){
       const userIds = Object.keys(usersSnap.val());
@@ -1340,7 +1329,6 @@ window.triggerSmartQuestReset = async function() {
       }
     }
     
-    // ৩. কারেন্ট লোকাল সেশন স্কোর রিসেট
     if(currentUser) {
       currentUser.score = 0;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
@@ -1351,7 +1339,6 @@ window.triggerSmartQuestReset = async function() {
   }
 }
 
-// ==== SECURITY & CO Privileges SETUP ====
 async function checkCOSetup(){
   const snap = await get(ref(db,'users')); let hasCO = snap.exists() && Object.values(snap.val()).some(u=>u.isCO);
   if(!hasCO && currentUser){
