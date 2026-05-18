@@ -117,7 +117,7 @@ th{background:var(--bg);color:var(--accent);}
   z-index: 5;
 }
 .score-control-btn {
-  padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--text);
+  padding: 6px 10px; font-size: 12px; font-weight: bold; cursor: pointer; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--text);
 }
 .battle-q-card {
   border-left: 4px solid var(--accent2); padding: 10px; margin-bottom: 10px; background: var(--bg); border-radius: 6px;
@@ -1839,7 +1839,7 @@ window.submitCreateGroup = async function(){
   toast('গ্রুপ তৈরি হয়েছে!'); showContact();
 }
 
-// ======================== CO PANEL ========================
+// ======================== CO PANEL (UPDATED) ========================
 window.showCOPanel = function(){
   if(!currentUser?.isCO) return toast('শুধুমাত্র সিওরা এই প্যানেলে ঢুকতে পারবে!');
   
@@ -1852,25 +1852,41 @@ window.showCOPanel = function(){
         <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>CO Center</span></header>
         <div class="main-content">
           
-          <!-- ১ ও ২. নোটিশ ট্যাগ এবং নোটিশ বোর্ড আপডেট মডিউল -->
-          <div class="card" style="border:1px solid var(--border);">
-            <h4 style="color:var(--accent2); margin-bottom:10px;">📢 Notice & Red Tag Manager</h4>
-            
-            <div style="margin-bottom:12px;">
-              <input class="input" id="coRedTagInput" placeholder="লাল নোটিশ ট্যাগ এর নতুন টেক্সট...">
-              <button class="btn btn-danger" style="margin-top:5px; padding:8px 12px; font-size:12px; width:auto;" onclick="updateRedTagLive()">Update Red Tag</button>
+          <!-- ১ ও ২ নম্বর পয়েন্ট: লাল নোটিশ ও নোটিশ বোর্ড আপডেট অপশন -->
+          <div class="card" style="border: 1px solid var(--accent); margin-bottom: 12px;">
+            <h4 style="color:var(--accent);">📢 নোটিশ বোর্ড ও রেড ট্যাগ আপডেট</h4>
+            <div class="form-builder-row">
+              <label>লাল ট্যাগ টেক্সট:</label>
+              <input class="input" id="coTickerInp" placeholder="চলমান স্ক্রোলিং রেড ট্যাগ টেক্সট">
             </div>
-            
-            <hr style="border-color:var(--border); margin:10px 0;">
-            
-            <div>
-              <textarea class="input" id="coNoticeBoardInput" rows="3" placeholder="নোটিশ বোর্ড এর নতুন লেখা..."></textarea>
-              <button class="btn btn-warning" style="margin-top:5px; padding:8px 12px; font-size:12px; width:auto;" onclick="updateNoticeBoardLive()">Update Notice Board</button>
+            <div class="form-builder-row">
+              <label>ট্যাগ মেয়াদ:</label>
+              <input class="input" id="coTickerDate" type="date">
             </div>
+            <button class="btn btn-success" style="padding: 8px; font-size: 12px; margin-top:5px;" onclick="coUpdateTicker()">Update Red Tag</button>
+            
+            <hr style="margin: 12px 0; border-color: var(--border);">
+            
+            <div class="form-builder-row">
+              <label>নোটিশ বোর্ড:</label>
+              <textarea class="input" id="coNoticeInp" rows="2" placeholder="নোটিশ বোর্ড কন্টেন্ট লিখুন..."></textarea>
+            </div>
+            <div class="form-builder-row">
+              <label>বোর্ড মেয়াদ:</label>
+              <input class="input" id="coNoticeDate" type="date">
+            </div>
+            <button class="btn btn-success" style="padding: 8px; font-size: 12px; margin-top:5px;" onclick="coUpdateNoticeBoard()">Update Notice Board</button>
           </div>
 
-          <!-- সিও গ্রুপ ব্যাটল আম্পায়ার কন্ট্রোল মডিউল -->
-          <div class="card" style="border: 2px solid var(--accent2); background:#fff5f5;">
+          <!-- ৫ নম্বর পয়েন্ট: স্কোর রিসেট গ্লোবাল বাটন -->
+          <div class="card" style="border: 1px solid var(--accent2); margin-bottom: 12px; background:#fff5f5;">
+            <h4 style="color:var(--accent2);">⚠️ গ্লোবাল স্কোর রিসেট কন্ট্রোল</h4>
+            <p style="font-size: 11px; color: var(--muted); margin-bottom: 6px;">* এই বাটনে ক্লিক করলে সকল রেজিস্টার্ড ইউজারের স্কোর পুনরায় ০ (শূণ্য) থেকে শুরু হবে।</p>
+            <button class="btn btn-danger" style="padding: 10px; font-size: 13px; font-weight: bold; margin-top:0;" onclick="coResetAllScoresGlobal()">🔄 Reset All Users Score</button>
+          </div>
+
+          <!-- গ্রুপ ব্যাটল সেশন আম্পায়ার কন্ট্রোল -->
+          <div class="card" style="border: 1px solid var(--warning); margin-bottom:12px;">
             <h4>🛡️ Live Group Battle Control Panel</h4>
             <div style="display:flex; gap:6px; margin-top:8px;">
               <button class="btn btn-success" style="margin:0; font-size:11px;" onclick="coToggleGroupBattleSessionMode(true)">Start Game</button>
@@ -1904,112 +1920,140 @@ window.showCOPanel = function(){
       </div>
     `;
     
-    get(ref(db, 'scroll_tag')).then(s => { if(s.exists()) $('coRedTagInput').value = s.val().text || ''; });
-    get(ref(db, 'notice_board')).then(s => { if(s.exists()) $('coNoticeBoardInput').value = s.val().text || ''; });
+    get(ref(db, 'scroll_tag')).then(s => { if(s.exists()) $('coTickerInp').value = s.val().text || ''; });
+    get(ref(db, 'notice_board')).then(s => { if(s.exists()) $('coNoticeInp').value = s.val().text || ''; });
   });
 }
 
-// ১. Update Red Tag ফাংশন
-window.updateRedTagLive = async function() {
-  const text = $('coRedTagInput').value.trim();
-  if(!text) return toast('লাল ট্যাগের লেখাটি টাইপ করো!');
-  const expiryDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // ২ দিন এক্সপায়ারি
-  await set(ref(db, 'scroll_tag'), { text: text, lastDate: expiryDate });
-  toast('উপরের লাল নোটিশ ট্যাগ সফলভাবে আপডেট হয়েছে!');
+// নোটিশ ও রেড ট্যাগ আপডেট ডাটাবেস হ্যান্ডলার
+window.coUpdateTicker = async function() {
+  const text = $('coTickerInp').value.trim();
+  const date = $('coTickerDate').value;
+  if(!text || !date) return toast('লাল ট্যাগের লেখা এবং মেয়াদের শেষ তারিখ দিন!');
+  await set(ref(db, 'scroll_tag'), { text: text, lastDate: date });
+  toast('লাল নোটিশ ট্যাগ সফলভাবে আপডেট হয়েছে!');
 }
 
-// ২. Update Notice Board ফাংশন
-window.updateNoticeBoardLive = async function() {
-  const text = $('coNoticeBoardInput').value.trim();
-  if(!text) return toast('নোটিশ বোর্ডের লেখাটি টাইপ করো!');
-  const expiryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // ৭ দিন এক্সপায়ারি
-  await set(ref(db, 'notice_board'), { text: text, lastDate: expiryDate });
+window.coUpdateNoticeBoard = async function() {
+  const text = $('coNoticeInp').value.trim();
+  const date = $('coNoticeDate').value;
+  if(!text || !date) return toast('নোটিশ বোর্ডের লেখা এবং মেয়াদের শেষ তারিখ দিন!');
+  await set(ref(db, 'notice_board'), { text: text, lastDate: date });
   toast('নোটিশ বোর্ড সফলভাবে আপডেট হয়েছে!');
 }
 
-// ৩ ও ৪. Manage Members প্যানেল (Score, Block, Delete, Promote CO)
+// স্কোর রিসেট ডাটাবেস মডিউল
+window.coResetAllScoresGlobal = async function() {
+  if(!confirm('⚠️ সাবধান! তুমি কি নিশ্চিত যে সকল মেম্বারের অ্যাকাউন্ট স্কোর ০ রিসেট করতে চাও? এটি আর ফেরত পাওয়া যাবে না!')) return;
+  const passCheck = prompt('ভুলবশত ক্লিক এড়াতে আপনার নিজের মেম্বার পাসওয়ার্ডটি দিন:');
+  if(passCheck !== currentUser.password) return alert('ভুল পাসওয়ার্ড! স্কোর রিসেট বাতিল করা হলো।');
+  
+  toast('স্কোর রিসেট হচ্ছে...');
+  const snap = await get(ref(db, 'users'));
+  if(snap.exists()) {
+    let updates = {};
+    Object.keys(snap.val()).forEach(serial => {
+      updates[`users/${serial}/score`] = 0;
+    });
+    await update(ref(db), updates);
+    alert('🎉 সফলভাবে সমস্ত মেম্বারদের স্কোর পুনরায় প্রথম থেকে শুরু (Reset) করা হয়েছে!');
+    showCOPanel();
+  }
+}
+
+// ৩ ও ৪ নম্বর পয়েন্ট: ইউজার ম্যানেজমেন্ট রিডিজাইন (Block, Delete, Promote CO)
 window.coManageUsers = function() {
   $('app').innerHTML = `
     <div class="screen active">
       <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Manage Members</span></header>
-      <div class="main-content" id="coUsersListArea">Loading Member List...</div>
+      <div class="main-content">
+        <div class="card">
+          <h3>👥 মেম্বার কন্ট্রোল প্যানেল</h3>
+          <input class="input" id="userSearchInp" placeholder="নাম অথবা সিরিয়াল আইডি দিয়ে খুঁজুন..." oninput="filterCOUsersList()">
+          <div id="coUsersListArea" style="margin-top: 15px;">মেম্বার ডাটা লোড হচ্ছে...</div>
+        </div>
+      </div>
     </div>
   `;
+  loadCOUsersData();
+}
+
+async function loadCOUsersData() {
+  const snap = await get(ref(db, 'users'));
+  window.coUsersCache = snap.exists() ? snap.val() : {};
+  filterCOUsersList();
+}
+
+window.filterCOUsersList = function() {
+  const queryText = $('userSearchInp') ? $('userSearchInp').value.trim().toLowerCase() : '';
+  let html = '';
   
-  onValue(ref(db, 'users'), snap => {
-    let html = '<div class="card"><h3 style="color:var(--accent)">👥 অল ইউজার ডিরেক্টরি</h3></div>';
-    if(snap.exists()) {
-      Object.entries(snap.val()).forEach(([serial, u]) => {
-        const isUserBlocked = u.isBlocked || false;
-        html += `
-          <div class="card" style="border-left: 5px solid ${isUserBlocked ? 'var(--accent2)' : 'var(--success)'};">
-            <strong>${u.name}</strong> <small style="color:var(--muted);">(${serial})</small>
-            <div style="font-size:12px; margin:4px 0;">
-              Score: <b style="color:var(--success);">${u.score || 0}</b> | 
-              Role: <b style="color:var(--accent);">${u.isCO ? 'CO' : 'Member'}</b> | 
-              Status: <b>${isUserBlocked ? '❌ Blocked' : '✅ Active'}</b>
-            </div>
-            
-            <div class="flex-actions" style="margin-top:10px;">
-              <!-- স্কোর প্লাস মাইনাস -->
-              <button class="score-control-btn" onclick="modifyUserScoreLive('${serial}', 10)">+10</button>
-              <button class="score-control-btn" onclick="modifyUserScoreLive('${serial}', -10)">-10</button>
-              
-              <!-- ৩. ব্লক / আনব্লক অপশন -->
-              <button class="btn ${isUserBlocked ? 'btn-success' : 'btn-warning'}" style="margin:0; padding:6px 10px; font-size:11px;" onclick="toggleBlockUserLive('${serial}', ${isUserBlocked})">
-                ${isUserBlocked ? 'Unblock' : 'Block Account'}
-              </button>
-              
-              <!-- ৩. পার্মানেন্ট ডিলিট অপশন -->
-              <button class="btn btn-danger" style="margin:0; padding:6px 10px; font-size:11px;" onclick="deleteUserForeverLive('${serial}')">Delete Forever</button>
-              
-              <!-- ৪. Promote as CO অপশন -->
-              ${!u.isCO ? `<button class="btn btn-success" style="margin:0; padding:6px 10px; font-size:11px; background:var(--warning);" onclick="promoteUserToCoLive('${serial}')">Promote as CO 👑</button>` : ''}
-            </div>
-          </div>
-        `;
-      });
-    } else { html += '<div class="card">কোনো ইউজার রেজিস্টার্ড নেই।</div>'; }
-    if($('coUsersListArea')) $('coUsersListArea').innerHTML = html;
+  Object.entries(window.coUsersCache || {}).forEach(([serial, u]) => {
+    if(queryText && !u.name.toLowerCase().includes(queryText) && !serial.toLowerCase().includes(queryText)) return;
+    
+    const statusLabel = u.isBlocked ? 'Blocked' : (u.isCO ? 'CO' : 'Member');
+    const blockBtnText = u.isBlocked ? 'Unblock' : 'Block';
+    
+    html += `
+      <div class="card" style="border-left: 4px solid ${u.isBlocked ? 'var(--accent2)' : (u.isCO ? 'var(--warning)' : 'var(--success)')}; padding: 12px; margin-bottom: 10px;">
+        <div style="font-size:14px;"><strong>${u.name}</strong> (${serial})</div>
+        <div style="font-size:12px; margin:4px 0; color:var(--muted)">
+          Score: <b style="color:var(--success)">${u.score || 0}</b> | পদবী: <b>${statusLabel}</b>
+        </div>
+        
+        <div style="display:flex; gap:6px; margin-top:8px; align-items:center; flex-wrap:wrap;">
+          <button class="score-control-btn" onclick="coAlterUserScore('${serial}', 10)">+10</button>
+          <button class="score-control-btn" onclick="coAlterUserScore('${serial}', -10)">-10</button>
+          
+          <!-- Promote to CO বাটন -->
+          ${!u.isCO ? `<button class="btn btn-warning" style="margin:0; padding:6px 10px; font-size:11px; width:auto;" onclick="coPromoteToCO('${serial}')">Promote as CO</button>` : ''}
+          
+          <!-- Block/Unblock বাটন -->
+          <button class="btn ${u.isBlocked ? 'btn-success' : 'btn-danger'}" style="margin:0; padding:6px 10px; font-size:11px; width:auto;" onclick="coToggleBlockUser('${serial}', ${u.isBlocked || false})">${blockBtnText}</button>
+          
+          <!-- Delete Account বাটন -->
+          <button class="btn btn-danger" style="margin:0; padding:6px 10px; font-size:11px; width:auto; background:#721c24;" onclick="coDeleteUserForever('${serial}')">Delete</button>
+        </div>
+      </div>
+    `;
   });
+  
+  if($('coUsersListArea')) $('coUsersListArea').innerHTML = html || '<p>কোনো মেম্বার খুঁজে পাওয়া যায়নি।</p>';
 }
 
-// স্কোর মডিফায়ার সাব-লজিক
-window.modifyUserScoreLive = async function(serial, amount) {
-  const snap = await get(ref(db, 'users/' + serial));
-  if(snap.exists()) {
-    let targetScore = (snap.val().score || 0) + amount;
-    if(targetScore < 0) targetScore = 0;
-    await update(ref(ref(db, 'users/' + serial)), { score: targetScore });
-    toast(`স্কোর পরিবর্তন করা হয়েছে (${amount})!`);
-  }
+window.coAlterUserScore = async function(serial, amount) {
+  const uSnap = await get(ref(db, 'users/' + serial));
+  if(!uSnap.exists()) return;
+  let newScore = (uSnap.val().score || 0) + amount;
+  if(newScore < 0) newScore = 0;
+  await update(ref(db, 'users/' + serial), { score: newScore });
+  toast(`মেম্বারের স্কোর ${amount > 0 ? '+' : ''}${amount} পরিবর্তন করা হয়েছে!`);
+  loadCOUsersData();
 }
 
-// ৩. অ্যাকাউন্ট লাইভ ব্লক/আনব্লক মেকানিজম
-window.toggleBlockUserLive = async function(serial, currentStatus) {
-  const nextStatus = !currentStatus;
-  if(confirm(`তুমি কি নিশ্চিতভাবে এই মেম্বারকে ${nextStatus ? 'ব্লক' : 'আনব্লক'} করতে চাও?`)) {
-    await update(ref(db, 'users/' + serial), { isBlocked: nextStatus });
-    toast(nextStatus ? 'ইউজার সফলভাবে ব্লকড হয়েছে!' : 'ইউজার অ্যাকাউন্ট আনব্লকড হয়েছে!');
-  }
+window.coPromoteToCO = async function(serial) {
+  if(!confirm(`তুমি কি নিশ্চিত যে (${serial}) সিরিয়ালের মেম্বারকে নতুন CO বানাতে চাও?`)) return;
+  await update(ref(db, 'users/' + serial), { isCO: true });
+  toast('মেম্বারকে সফলভাবে CO পদে উন্নীত করা হয়েছে!');
+  loadCOUsersData();
 }
 
-// ৩. অ্যাকাউন্ট ফায়ারবেস থেকে চিরতরে মুছে ফেলার লজিক
-window.deleteUserForeverLive = async function(serial) {
-  if(confirm('🚨 সাবধান! তুমি কি নিশ্চিত যে এই ইউজারের অ্যাকাউন্ট ফায়ারবেস থেকে চিরকালের জন্য মুছে দিতে চাও? এই অ্যাকশন রিভার্ট করা যাবে না!')) {
-    await remove(ref(db, 'users/' + serial));
-    toast('ইউজার অ্যাকাউন্টটি ফায়ারবেস ডেটাবেস থেকে মুছে ফেলা হয়েছে!');
-  }
+window.coToggleBlockUser = async function(serial, currentBlockStatus) {
+  const targetStatus = !currentBlockStatus;
+  if(!confirm(`তুমি কি নিশ্চিত যে এই অ্যাকাউন্টটি ${targetStatus ? 'Block' : 'Unblock'} করতে চাও?`)) return;
+  await update(ref(db, 'users/' + serial), { isBlocked: targetStatus });
+  toast(targetStatus ? 'অ্যাকাউন্ট ব্লক করা হয়েছে!' : 'অ্যাকাউন্ট আনব্লক করা হয়েছে!');
+  loadCOUsersData();
 }
 
-// ৪. নতুন সিইও/CO তৈরির অপশন লজিক
-window.promoteUserToCoLive = async function(serial) {
-  if(confirm('👑 তুমি কি নিশ্চিতভাবে এই মেম্বারকে CO প্যানেলে উন্নীত করতে চাও? তিনি আপনার মতোই সব কন্ট্রোল করার ক্ষমতা পাবেন!')) {
-    await update(ref(db, 'users/' + serial), { isCO: true });
-    toast('মেম্বারকে সফলভাবে CO (Chief Officer) হিসেবে প্রোমোট করা হয়েছে!');
-  }
+window.coDeleteUserForever = async function(serial) {
+  if(!confirm(`⚠️ চূড়ান্ত সতর্কতা! তুমি কি নিশ্চিত যে মেম্বার অ্যাকাউন্টটি (${serial}) ফায়ারবেস ডেটাবেস থেকে চিরতরে মুছে ফেলতে চাও?`)) return;
+  await remove(ref(db, 'users/' + serial));
+  toast('মেম্বার অ্যাকাউন্ট সার্ভার থেকে ডিলিট করা হয়েছে!');
+  loadCOUsersData();
 }
 
+// সিও প্যানেল MCQ Fight ক্রিয়েটর উইন্ডো
 window.coAddMCQFightScreen = function() {
   $('app').innerHTML = `
     <div class="screen active">
@@ -2019,6 +2063,7 @@ window.coAddMCQFightScreen = function() {
           <h3>১-ক্লিকে বাল্ক এমসিকিউ প্রশ্নপত্র আপলোড করো 📝</h3>
           <input class="input" id="fTitle" placeholder="ফাইটের নাম (যেমন: ভৌতবিজ্ঞান মক ফাইট)">
           <input class="input" id="fExpiryHours" type="number" placeholder="কত ঘণ্টা পর ডিলিট হবে? (যেমন: ২)">
+          
           <p style="margin-top:10px; font-size:11px; font-weight:bold; color:var(--accent);">গাইডলাইন ফরম্যাট: হুবহু নিচের মতন করে প্রশ্ন এবং ৪টি অপশন ও ফাইনাল উত্তর দিন।</p>
           <textarea class="input" id="fRawDataText" rows="12" style="font-family:monospace; font-size:12px;" placeholder="Question&#10;Option 1&#10;Option 2&#10;Option 3&#10;Option 4&#10;Answer&#10;&#10;Question 2..."></textarea>
           <button class="btn btn-warning" onclick="publishBulkMCQFightEngine()">Publish Fight Live</button>
@@ -2030,13 +2075,13 @@ window.coAddMCQFightScreen = function() {
 
 window.publishBulkMCQFightEngine = async function() {
   const title = $('fTitle').value.trim();
-  const hrs = parseInt($('fExpiryHours').value) || 2;
-  const rawData = $('fRawDataText').value.trim();
-  if(!title || !rawData) return toast('সব তথ্য পূরণ করো!');
+  const hours = parseFloat($('fExpiryHours').value) || 24;
+  const rawText = $('fRawDataText').value.trim();
+  if(!title || !rawText) return toast('সব তথ্য পূরণ করুন!');
   
-  const lines = rawData.split('\n').map(l => l.trim()).filter(l => l !== "");
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   let questions = [];
-  for(let i = 0; i < lines.length; i += 6) {
+  for(let i=0; i<lines.length; i+=6) {
     if(lines[i] && lines[i+1] && lines[i+2] && lines[i+3] && lines[i+4] && lines[i+5]) {
       questions.push({
         question: lines[i],
@@ -2045,33 +2090,30 @@ window.publishBulkMCQFightEngine = async function() {
       });
     }
   }
-  if(questions.length === 0) return toast('সঠিক ফরম্যাটে ইনপুট দাও!');
+  if(questions.length === 0) return toast('সтив ফরম্যাটে প্রশ্ন ইনপুট করুন!');
   
   const newFightRef = push(ref(db, 'mcq_fights'));
   await set(newFightRef, {
     title: title,
     questions: questions,
-    expireTimestamp: Date.now() + (hrs * 60 * 60 * 1000)
+    expireTimestamp: Date.now() + (hours * 60 * 60 * 1000),
+    createdAt: Date.now()
   });
-  toast('এমসিকিউ ফাইট পাবলিশ হয়েছে!');
+  toast('এমসিকিউ ফাইট সেশন লাইভ করা হয়েছে!');
   showCOPanel();
 }
 
-// বাকি অতিরিক্ত প্লাগইন ফাংশনাল লোডার
-window.coAddQuest = function(){ toast('Quest UI Activated'); }
-window.coAddDynamic = function(node, label){ toast(`Add ${label} Screen Activated`); }
-window.coAddApplication = function(){ toast('Form Builder Screen Activated'); }
-window.coContactMembers = function(){ toast('Contact Management Screen Activated'); }
-window.coAddContent = function(){ toast('Content Uploader Screen Activated'); }
-window.coShareLinkScreen = function(){ toast('Shared Link Engine Activated'); }
+// বাকী পূর্বের ফাংশনগুলোর সংযোগ রক্ষা করার জন্য ডামি ডেফিনিশন (প্রয়োজন মতন কোড যুক্ত করবেন)
+window.coAddQuest = function(){ alert('Quest যোগ করার উইন্ডো (পূর্বের কোড অনুযায়ী কাজ করবে)'); }
+window.coAddDynamic = function(node, label){ alert('ডায়নামিক আইটেম তৈরির উইন্ডো'); }
+window.coAddApplication = function(){ alert('অ্যাপ্লিকেশন ফর্ম মেকার'); }
+window.coContactMembers = function(){ alert('মেম্বার চ্যাট কন্টাক্ট হাব'); }
+window.coAddContent = function(){ alert('ফিড কন্টেন্ট রাইটার'); }
+window.coShareLinkScreen = function(){ alert('লিঙ্ক শেয়ার পোর্টাল ম্যানেজার'); }
 
-// অ্যাপ্লিকেশন ইনিশিয়েট
-if(localStorage.getItem(STORAGE_KEY)){
-  currentUser = JSON.parse(localStorage.getItem(STORAGE_KEY));
-  syncUserAndRender();
-} else {
-  renderAuth();
-}
+// বুটস্ট্র্যাপ রানটাইম ট্রিগার
+onValue(ref(db, '.info/connected'), snap => { if(snap.val() === false) toast('অফলাইন মুড সক্রিয়!'); });
+syncUserAndRender();
 </script>
 </body>
 </html>
