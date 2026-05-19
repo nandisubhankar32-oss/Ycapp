@@ -3,593 +3,263 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>স্মার্ট চেস গেম (টোকেন মাল্টিপ্লেয়ার)</title>
-    <!-- PeerJS লাইব্রেরি: কোনো সার্ভার ছাড়াই ২ ডিভাইসে কানেক্ট করার জন্য -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
+    <title>Learning Time - Battle & Chat App</title>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
+        /* Basic Reset & Variables */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        :root { --primary: #4a90e2; --secondary: #f39c12; --bg: #f4f7f6; --text: #333; --co-color: #e74c3c; }
+        
+        body { background-color: var(--bg); color: var(--text); transition: filter 0.3s ease; }
+        /* Blue-cut Filter Class */
+        body.blue-cut { filter: sepia(0.4) hue-rotate(-15deg) brightness(0.9); }
 
-        body {
-            background: #1a1a2e;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 15px;
-        }
+        /* Navbar */
+        .navbar { display: flex; justify-content: space-between; align-items: center; background: var(--primary); color: white; padding: 15px 20px; position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .nav-icons i { font-size: 20px; margin-left: 15px; cursor: pointer; position: relative; }
+        .red-dot { position: absolute; top: -5px; right: -5px; background: red; height: 10px; width: 10px; border-radius: 50%; }
 
-        h1 {
-            color: #00f2fe;
-            margin-bottom: 10px;
-            text-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
-            font-size: 22px;
-        }
+        /* Container & Tabs */
+        .container { padding: 20px; max-width: 800px; margin: 0 auto; }
+        .tab-menu { display: flex; overflow-x: auto; background: white; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .tab-btn { flex: 1; padding: 12px; border: none; background: none; cursor: pointer; font-weight: bold; color: #777; border-bottom: 3px solid transparent; }
+        .tab-btn.active { color: var(--primary); border-bottom: 3px solid var(--primary); }
+        .tab-content { display: none; animation: fadeIn 0.3s; }
+        .tab-content.active { display: block; }
 
-        .controls, .p2p-panel {
-            background: #162447;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            justify-content: center;
-            align-items: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            width: 100%;
-            max-width: 440px;
-        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        input, select, button {
-            padding: 10px 12px;
-            border: none;
-            border-radius: 5px;
-            background: #1f4068;
-            color: white;
-            font-size: 14px;
-            outline: none;
-        }
+        /* Cards & Lists */
+        .card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        
+        /* Buttons */
+        .btn { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
+        .btn-primary { background: var(--primary); }
+        .btn-danger { background: var(--co-color); }
+        .btn-success { background: #2ecc71; }
+        .btn-warning { background: var(--secondary); }
 
-        input {
-            background: #0f172a;
-            border: 1px solid #1f4068;
-            flex: 1;
-            min-width: 150px;
-            text-align: center;
-            letter-spacing: 1px;
-        }
+        /* Chat List */
+        .chat-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .chat-item:hover { background: #f9f9f9; }
+        .avatar { width: 40px; height: 40px; border-radius: 50%; background: #ccc; margin-right: 15px; display: flex; justify-content: center; align-items: center; font-weight: bold; color: white; }
+        .green-light { height: 10px; width: 10px; background: #2ecc71; border-radius: 50%; display: inline-block; margin-left: 5px; }
+        .badge-new { background: var(--co-color); color: white; font-size: 10px; padding: 2px 5px; border-radius: 10px; margin-left: 10px; }
 
-        button {
-            cursor: pointer;
-            background: #e94560;
-            transition: 0.3s;
-            font-weight: bold;
-        }
+        /* CO Panel Specifics */
+        .score-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+        
+        /* Modal for Find Friend */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; }
+        input[type="text"] { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
 
-        button:hover {
-            background: #00f2fe;
-            color: #1a1a2e;
-        }
-
-        .btn-secondary { background: #1f4068; }
-
-        .score-board {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 15px;
-            font-size: 16px;
-            font-weight: bold;
-            width: 100%;
-            max-width: 440px;
-            justify-content: space-between;
-        }
-
-        .score-box {
-            background: #1f4068;
-            padding: 8px 15px;
-            border-radius: 5px;
-            flex: 1;
-            text-align: center;
-            border-bottom: 3px solid #00f2fe;
-        }
-
-        .board-container {
-            width: 100%;
-            max-width: 440px;
-            aspect-ratio: 1 / 1;
-            margin-bottom: 15px;
-            background: #0f172a;
-            padding: 6px;
-            border-radius: 8px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.7);
-        }
-
-        .chessboard {
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            grid-template-rows: repeat(8, 1fr);
-            width: 100%;
-            height: 100%;
-        }
-
-        .square {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .light { background-color: #e2e8f0; }
-        .dark { background-color: #475569; }
-
-        .selected { background-color: #f59e0b !important; }
-        .suggested { box-shadow: inset 0 0 12px #10b981; }
-        .last-move { background-color: rgba(14, 165, 233, 0.4) !important; }
-
-        .piece {
-            font-size: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
-        }
-
-        .w-piece {
-            color: #ffffff;
-            filter: drop-shadow(0px 0px 4px #00f2fe) drop-shadow(0px 2px 2px rgba(0,0,0,0.8));
-        }
-
-        .b-piece {
-            color: #0f172a;
-            filter: drop-shadow(0px 0px 5px #e94560) drop-shadow(0px 2px 2px rgba(255,255,255,0.5));
-        }
-
-        .status {
-            font-size: 15px;
-            color: #10b981;
-            margin-top: 5px;
-            text-align: center;
-            font-weight: bold;
-            background: rgba(16, 185, 129, 0.1);
-            padding: 8px 20px;
-            border-radius: 20px;
-            width: 100%;
-            max-width: 440px;
-        }
+        /* Timer */
+        #mcqTimerDisplay { font-size: 24px; font-weight: bold; color: var(--co-color); text-align: center; margin: 15px 0; }
     </style>
 </head>
 <body>
 
-    <h1>স্মার্ট ক্লাসিক চেস</h1>
-
-    <!-- মোড সিলেক্টর -->
-    <div class="controls">
-        <label for="gameMode">মোড:</label>
-        <select id="gameMode" onchange="changeMode()">
-            <option value="oneDevice">One Device Multiplayer</option>
-            <option value="twoDevice">Two Device (Online Token Mode)</option>
-            <option value="ai">AI Bot</option>
-        </select>
-
-        <span id="aiOptions" style="display:none;">
-            <label for="aiColor">বট:</label>
-            <select id="aiColor" onchange="initGame()">
-                <option value="b">কালো (Black)</option>
-                <option value="w">সাদা (White)</option>
-            </select>
-        </span>
-        
-        <button class="btn-secondary" onclick="initGame()">রিস্টার্ট</button>
-    </div>
-
-    <!-- টোকেন কানেকশন প্যানেল (শুধুমাত্র Two Device মোডে দেখাবে) -->
-    <div class="p2p-panel" id="p2pPanel" style="display: none;">
-        <div style="width:100%; display:flex; gap:8px; align-items:center;">
-            <input type="text" id="myToken" readonly placeholder="টোকেন তৈরি হচ্ছে...">
-            <button onclick="copyToken()">কপি টোকেন</button>
-        </div>
-        <div style="width:100%; display:flex; gap:8px; align-items:center; margin-top:5px;">
-            <input type="text" id="peerToken" placeholder="বন্ধুর টোকেন কোড দিন">
-            <button onclick="connectToPeer()">খেলতে জয়েন করুন</button>
+    <!-- Top Navbar -->
+    <div class="navbar">
+        <div class="logo"><b><i class="fa-solid fa-graduation-cap"></i> MEGH Portal</b></div>
+        <div class="nav-icons">
+            <i class="fa-solid fa-eye" id="blueCutBtn" title="Blue-cut Filter"></i>
+            <i class="fa-solid fa-volume-high" id="muteBtn" title="Mute/Unmute"></i>
+            <i class="fa-solid fa-bell">
+                <span class="red-dot" id="notifDot"></span>
+            </i>
         </div>
     </div>
 
-    <!-- স্কোরবোর্ড -->
-    <div class="score-board">
-        <div class="score-box" id="p1Box">সাদা (P1): <span id="p1Score">5</span></div>
-        <div class="score-box" id="p2Box">কালো (P2): <span id="p2Score">5</span></div>
+    <div class="container">
+        <!-- Navigation Tabs -->
+        <div class="tab-menu">
+            <button class="tab-btn active" onclick="openTab('contacts')">Contacts</button>
+            <button class="tab-btn" onclick="openTab('battle')">Live Battle</button>
+            <button class="tab-btn" onclick="openTab('copanel')">CO Panel</button>
+        </div>
+
+        <!-- CONTACTS TAB -->
+        <div id="contacts" class="tab-content active">
+            <div class="card flex-between">
+                <h3>My Contacts</h3>
+                <button class="btn btn-primary" onclick="showModal('findFriendModal')"><i class="fa-solid fa-user-plus"></i> Find Friend</button>
+            </div>
+            
+            <div class="card">
+                <h4>Groups <button class="btn btn-success" style="font-size: 12px; padding: 5px;"><i class="fa-solid fa-plus"></i> Create</button></h4>
+                <div class="chat-item">
+                    <div class="avatar" style="background: var(--secondary);"><i class="fa-solid fa-users"></i></div>
+                    <div>
+                        <strong>Learning Time Warriors <span class="badge-new">New</span></strong>
+                        <p style="font-size: 12px; color: #777;">Sudip: Let's start the project...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h4>Direct Messages</h4>
+                <div class="chat-item">
+                    <div class="avatar" style="background: var(--co-color);"><i class="fa-solid fa-user-shield"></i></div>
+                    <div style="flex-grow: 1;">
+                        <strong>Contact CO <span class="green-light"></span></strong>
+                        <p style="font-size: 12px; color: #777;">Expiry: 20 Days</p>
+                    </div>
+                    <button class="btn btn-danger" style="font-size: 12px;" onclick="alert('All messages deleted for CO Chat!')">Clear All</button>
+                </div>
+                
+                <div class="chat-item">
+                    <div class="avatar">S</div>
+                    <div style="flex-grow: 1;">
+                        <strong>Sudip <span class="green-light"></span></strong>
+                        <p style="font-size: 12px; color: #777;">(Nickname: Developer Bro)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LIVE BATTLE TAB -->
+        <div id="battle" class="tab-content">
+            <div class="card">
+                <h3><i class="fa-solid fa-swords"></i> Battle Arena</h3>
+                <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Select your battle mode.</p>
+
+                <div style="border: 1px solid #eee; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
+                    <h4 class="flex-between">MCQ Fight 
+                        <button class="btn btn-warning" onclick="startMCQTimer()">Start 15s Timer</button>
+                    </h4>
+                    <div id="mcqTimerDisplay">00:15</div>
+                    <p style="font-size: 12px; text-align: center;">CO can bulk add questions here.</p>
+                </div>
+
+                <div style="border: 1px solid #eee; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
+                    <h4>Group Battle (100s / 250s)</h4>
+                    <p style="font-size: 12px; margin-top: 5px;">CO Judgment Point System active.</p>
+                    <button class="btn btn-primary" style="margin-top: 10px; width: 100%;" onclick="alert('Looking for opponents...')">Find Group Match</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- CO PANEL TAB -->
+        <div id="copanel" class="tab-content">
+            <div class="card" style="border-left: 4px solid var(--co-color);">
+                <h3><i class="fa-solid fa-shield-halved"></i> CO Administration</h3>
+                <p style="font-size: 12px; color: #777; margin-bottom: 15px;">Manage users, assign points, and moderate content.</p>
+                
+                <div style="margin-bottom: 20px;">
+                    <strong>User: Sudip</strong> (Current Score: <span id="demoScore">50</span>)
+                    <div class="score-grid">
+                        <button class="btn btn-success" onclick="updateScore(1)">+1</button>
+                        <button class="btn btn-success" onclick="updateScore(5)">+5</button>
+                        <button class="btn btn-danger" onclick="updateScore(-10)">-10</button>
+                        <button class="btn btn-danger" onclick="updateScore(-50)">-50</button>
+                    </div>
+                </div>
+
+                <hr style="border:0; border-top:1px solid #eee; margin: 15px 0;">
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-warning" onclick="alert('User Promoted to Co-leader!')">Promote to Co-leader</button>
+                    <button class="btn btn-danger" onclick="alert('User Blocked!')">Block User</button>
+                    <button class="btn btn-danger" onclick="alert('All scores reset to 0!')">Clear All Scores</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
-    <!-- দাবার ১:১ বোর্ড -->
-    <div class="board-container">
-        <div id="board" class="chessboard"></div>
+    <!-- Modals -->
+    <div id="findFriendModal" class="modal">
+        <div class="modal-content">
+            <h3>Find Friend</h3>
+            <input type="text" placeholder="Enter username or ID...">
+            <div class="flex-between" style="margin-top: 15px;">
+                <button class="btn btn-primary" onclick="alert('Search feature requires backend database.')">Search</button>
+                <button class="btn btn-danger" onclick="closeModal('findFriendModal')">Close</button>
+            </div>
+        </div>
     </div>
 
-    <div class="status" id="gameStatus">আপনার চালের জন্য প্রস্তুত...</div>
-
+    <!-- JavaScript Logic -->
     <script>
-        const piecesSymbols = {
-            'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
-            'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟'
-        };
-
-        let initialBoard = [
-            ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR'],
-            ['bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP'],
-            ['', '', '', '', '', '', '', ''],
-            ['', '', '', '', '', '', '', ''],
-            ['', '', '', '', '', '', '', ''],
-            ['', '', '', '', '', '', '', ''],
-            ['wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP'],
-            ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
-        ];
-
-        let boardState = [];
-        let turn = 'w'; 
-        let selectedSquare = null;
-        let mode = 'oneDevice';
-        let aiColor = 'b';
-        let myRole = 'both'; // 'w', 'b', বা 'both' (অনলাইনের জন্য)
-        let gameOver = false;
-        let lastAiResult = null; 
-        let lastMoveSquares = [];
-
-        // P2P নেটওয়ার্ক ভ্যারিয়েবলস
-        let peer = null;
-        let conn = null;
-
-        const boardEl = document.getElementById('board');
-        const statusEl = document.getElementById('gameStatus');
-
-        function changeMode() {
-            mode = document.getElementById('gameMode').value;
-            document.getElementById('aiOptions').style.display = (mode === 'ai') ? 'inline-block' : 'none';
-            document.getElementById('p2pPanel').style.display = (mode === 'twoDevice') ? 'flex' : 'none';
+        // Tab Navigation Logic
+        function openTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             
-            if (mode === 'twoDevice') {
-                initP2P();
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Blue-cut Filter Logic
+        let blueCutActive = false;
+        document.getElementById('blueCutBtn').addEventListener('click', function() {
+            blueCutActive = !blueCutActive;
+            if(blueCutActive) {
+                document.body.classList.add('blue-cut');
+                this.style.color = "var(--secondary)"; // Change icon color
             } else {
-                myRole = 'both';
-                if(peer) { peer.destroy(); peer = null; conn = null; }
-                initGame();
+                document.body.classList.remove('blue-cut');
+                this.style.color = "white";
             }
-        }
+        });
 
-        // P2P নেটওয়ার্ক সেটআপ (টোকেন জেনারেট করা)
-        function initP2P() {
-            statusEl.innerText = "টোকেন সার্ভারে কানেক্ট হচ্ছে...";
-            if (peer) peer.destroy();
-
-            // একটি র‍্যান্ডম ৪ ডিজিটের সহজ টোকেন আইডি তৈরি
-            const customId = 'CHESS-' + Math.floor(1000 + Math.random() * 9000);
-            peer = new Peer(customId);
-
-            peer.on('open', (id) => {
-                document.getElementById('myToken').value = id;
-                statusEl.innerText = "টোকেন রেডি! কোড কপি করে আপনার বন্ধুকে পাঠান।";
-            });
-
-            // অন্য ডিভাইস থেকে কানেকশন রিসিভ করা (আপনি যখন হোস্ট)
-            peer.on('connection', (connection) => {
-                conn = connection;
-                myRole = 'w'; // হোস্ট সবসময় সাদা পাবে
-                setupConnEvents();
-                statusEl.innerText = "বন্ধু খেলায় যুক্ত হয়েছে! খেলা শুরু করুন। আপনি সাদা (White)।";
-                initGame();
-            });
-
-            peer.on('error', (err) => {
-                console.error(err);
-                statusEl.innerText = "টোকেন তৈরিতে সমস্যা হয়েছে। আবার চেষ্টা করুন।";
-            });
-        }
-
-        // টোকেন দিয়ে কানেক্ট করা (আপনি যখন জয়েন করছেন)
-        function connectToPeer() {
-            const token = document.getElementById('peerToken').value.trim();
-            if (!token) { alert("অনুগ্রহ করে সঠিক টোকেন কোডটি দিন।"); return; }
-
-            statusEl.innerText = "বন্ধুর ডিভাইসের সাথে কানেক্ট হচ্ছে...";
-            conn = peer.connect(token);
-
-            conn.on('open', () => {
-                myRole = 'b'; // জয়েন করা প্লেয়ার সবসময় কালো পাবে
-                setupConnEvents();
-                statusEl.innerText = "কানেকশন সফল! খেলা শুরু। আপনি কালো (Black)।";
-                initGame();
-            });
-        }
-
-        // ডেটা আদান-প্রদান হ্যান্ডেল করা
-        function setupConnEvents() {
-            conn.on('data', (data) => {
-                if (data.type === 'move') {
-                    executeMove(data.fromR, data.fromC, data.toR, data.toC, false);
-                } else if (data.type === 'reset') {
-                    resetLocalGame();
-                }
-            });
-            conn.on('close', () => {
-                statusEl.innerText = "কানেকশন বিচ্ছিন্ন হয়ে গেছে।";
-                gameOver = true;
-            });
-        }
-
-        function copyToken() {
-            const tokenInput = document.getElementById('myToken');
-            tokenInput.select();
-            navigator.clipboard.writeText(tokenInput.value);
-            alert("টোকেন কপি হয়েছে! আপনার বন্ধুর 'কন্টাক্ট অপশনে' বা মেসেজে পাঠিয়ে দিন।");
-        }
-
-        function initGame() {
-            resetLocalGame();
-            if (mode === 'twoDevice' && conn && conn.open) {
-                conn.send({ type: 'reset' });
-            }
-        }
-
-        function resetLocalGame() {
-            boardState = JSON.parse(JSON.stringify(initialBoard));
-            turn = 'w';
-            selectedSquare = null;
-            gameOver = false;
-            lastMoveSquares = [];
-            document.getElementById('p1Score').innerText = '5';
-            document.getElementById('p2Score').innerText = '5';
-            renderBoard();
-            updateStatus();
-
-            if (mode === 'ai' && document.getElementById('aiColor').value === 'w') {
-                aiColor = 'w';
-                setTimeout(makeAiMove, 600);
-            } else if (mode === 'ai') {
-                aiColor = 'b';
-            }
-        }
-
-        function renderBoard() {
-            boardEl.innerHTML = '';
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    const square = document.createElement('div');
-                    square.classList.add('square');
-                    square.classList.add((r + c) % 2 === 0 ? 'light' : 'dark');
-                    
-                    if (lastMoveSquares.some(s => s.r === r && s.c === c)) {
-                        square.classList.add('last-move');
-                    }
-
-                    const piece = boardState[r][c];
-                    if (piece) {
-                        const pieceEl = document.createElement('div');
-                        pieceEl.classList.add('piece');
-                        pieceEl.classList.add(piece[0] === 'w' ? 'w-piece' : 'b-piece');
-                        pieceEl.innerText = piecesSymbols[piece];
-                        square.appendChild(pieceEl);
-                    }
-
-                    square.addEventListener('click', () => handleSquareClick(r, c));
-                    boardEl.appendChild(square);
-                }
-            }
-        }
-
-        function handleSquareClick(r, c) {
-            if (gameOver) return;
-            
-            // অনলাইন মোডে নিজের চাল ছাড়া অন্য সময় ক্লিক লক করা
-            if (mode === 'twoDevice' && myRole !== turn) return;
-            if (mode === 'ai' && turn === aiColor) return;
-
-            const piece = boardState[r][c];
-
-            if (selectedSquare) {
-                if (selectedSquare.r === r && selectedSquare.c === c) {
-                    clearHighlights();
-                    selectedSquare = null;
-                    return;
-                }
-
-                if (isValidMove(selectedSquare.r, selectedSquare.c, r, c)) {
-                    // অনলাইনের ক্ষেত্রে অন্য ডিভাইসে চাল পাঠানো
-                    if (mode === 'twoDevice' && conn && conn.open) {
-                        conn.send({ type: 'move', fromR: selectedSquare.r, fromC: selectedSquare.c, toR: r, toC: c });
-                    }
-                    
-                    executeMove(selectedSquare.r, selectedSquare.c, r, c, true);
-                    selectedSquare = null;
-                    clearHighlights();
-                } else if (piece && piece[0] === turn) {
-                    clearHighlights();
-                    selectPiece(r, c);
-                }
-            } else if (piece && piece[0] === turn) {
-                selectPiece(r, c);
-            }
-        }
-
-        function selectPiece(r, c) {
-            selectedSquare = { r, c };
-            boardEl.children[r * 8 + c].classList.add('selected');
-
-            for (let i = 0; i < 8; i++) {
-                for (let j = 0; j < 8; j++) {
-                    if (isValidMove(r, c, i, j)) {
-                        boardEl.children[i * 8 + j].classList.add('suggested');
-                    }
-                }
-            }
-        }
-
-        function clearHighlights() {
-            for (let child of boardEl.children) {
-                child.classList.remove('selected');
-                child.classList.remove('suggested');
-            }
-        }
-
-        // পিওর এবং স্টেবল রুলস ভ্যালিডেশন
-        function isValidMove(fromR, fromC, toR, toC) {
-            const piece = boardState[fromR][fromC];
-            const target = boardState[toR][toC];
-            if (target && target[0] === piece[0]) return false;
-
-            const dr = toR - fromR;
-            const dc = toC - fromC;
-            const absDr = Math.abs(dr);
-            const absDc = Math.abs(dc);
-
-            if (piece[1] === 'P') { 
-                const dir = piece[0] === 'w' ? -1 : 1;
-                const startRow = piece[0] === 'w' ? 6 : 1;
-                if (dc === 0 && dr === dir && !target) return true;
-                if (dc === 0 && fromR === startRow && dr === 2 * dir && !boardState[fromR + dir][fromC] && !target) return true;
-                if (absDc === 1 && dr === dir && target) return true;
-                return false;
-            }
-            if (piece[1] === 'N') return (absDr === 2 && absDc === 1) || (absDr === 1 && absDc === 2);
-            if (piece[1] === 'B') return (absDr === absDc) && isPathClear(fromR, fromC, toR, toC);
-            if (piece[1] === 'R') return (dr === 0 || dc === 0) && isPathClear(fromR, fromC, toR, toC);
-            if (piece[1] === 'Q') return (absDr === absDc || dr === 0 || dc === 0) && isPathClear(fromR, fromC, toR, toC);
-            if (piece[1] === 'K') return (absDr <= 1 && absDc <= 1);
-
-            return false;
-        }
-
-        function isPathClear(fromR, fromC, toR, toC) {
-            const stepR = toR === fromR ? 0 : (toR > fromR ? 1 : -1);
-            const stepC = toC === fromC ? 0 : (toC > fromC ? 1 : -1);
-            let r = fromR + stepR;
-            let c = fromC + stepC;
-            while (r !== toR || c !== toC) {
-                if (boardState[r][c] !== '') return false;
-                r += stepR;
-                c += stepC;
-            }
-            return true;
-        }
-
-        // চালটি কার্যকর করা
-        function executeMove(fromR, fromC, toR, toC, triggerAi = true) {
-            let piece = boardState[fromR][fromC];
-            
-            // প্যাউন প্রমোশন (মন্ত্রী করা)
-            if (piece[1] === 'P' && (toR === 0 || toR === 7)) {
-                piece = piece[0] + 'Q'; 
-            }
-
-            boardState[toR][toC] = piece;
-            boardState[fromR][fromC] = '';
-            
-            lastMoveSquares = [{ r: fromR, c: fromC }, { r: toR, c: toC }];
-            renderBoard();
-
-            // রাজা চেক করার মাধ্যমে উইনার নির্ধারণ
-            let bKing = false, wKing = false;
-            for(let r=0; r<8; r++) {
-                for(let c=0; c<8; c++) {
-                    if(boardState[r][c] === 'wK') wKing = true;
-                    if(boardState[r][c] === 'bK') bKing = true;
-                }
-            }
-
-            if (!wKing) { endGame('b'); return; }
-            if (!bKing) { endGame('w'); return; }
-
-            turn = turn === 'w' ? 'b' : 'w';
-            updateStatus();
-
-            if (triggerAi && mode === 'ai' && turn === aiColor) {
-                setTimeout(makeAiMove, 600);
-            }
-        }
-
-        // স্মার্ট এআই লজিক (যা পরপর হারবে বা জিতবে না)
-        function makeAiMove() {
-            if (gameOver) return;
-
-            let legalMoves = [];
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    if (boardState[r][c] && boardState[r][c][0] === aiColor) {
-                        for (let tr = 0; tr < 8; tr++) {
-                            for (let tc = 0; tc < 8; tc++) {
-                                if (isValidMove(r, c, tr, tc)) {
-                                    let weight = 1;
-                                    if (boardState[tr][tc] !== '') {
-                                        weight = (lastAiResult === 'win') ? 2 : 15; // আগেরবার জিতলে নরমাল চাল দেবে, হারলে খুব এগ্রেসিভ খেলবে
-                                    }
-                                    legalMoves.push({ fromR: r, fromC: c, toR: tr, toC: tc, weight: weight });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (legalMoves.length === 0) {
-                endGame(aiColor === 'w' ? 'b' : 'w');
-                return;
-            }
-
-            legalMoves.sort((a, b) => b.weight - a.weight);
-            let chosenMove = legalMoves[0];
-
-            // এআই এর ধারাবাহিকতা মেইনটেইন করার ট্রিক
-            if (lastAiResult === 'win' && legalMoves.length > 1 && Math.random() > 0.4) {
-                chosenMove = legalMoves[Math.floor(Math.random() * (legalMoves.length / 2))];
-            }
-
-            executeMove(chosenMove.fromR, chosenMove.fromC, chosenMove.toR, chosenMove.toC, false);
-        }
-
-        function endGame(winner) {
-            gameOver = true;
-            if (winner === 'w') {
-                document.getElementById('p1Score').innerText = '10';
-                document.getElementById('p2Score').innerText = '5';
-                statusEl.innerText = "খেলা শেষ! সাদা (P1) জিতেছে ও ১০ স্কোর পেয়েছে!";
+        // Mute/Unmute Logic
+        let isMuted = false;
+        document.getElementById('muteBtn').addEventListener('click', function() {
+            isMuted = !isMuted;
+            if(isMuted) {
+                this.classList.remove('fa-volume-high');
+                this.classList.add('fa-volume-xmark');
+                this.style.color = "#ff7675";
+                document.getElementById('notifDot').style.display = 'none'; // Hide red dot when muted
             } else {
-                document.getElementById('p1Score').innerText = '5';
-                document.getElementById('p2Score').innerText = '10';
-                statusEl.innerText = "খেলা শেষ! কালো (P2) জিতেছে ও ১০ স্কোর পেয়েছে!";
+                this.classList.add('fa-volume-high');
+                this.classList.remove('fa-volume-xmark');
+                this.style.color = "white";
+                document.getElementById('notifDot').style.display = 'block';
             }
+        });
 
-            if (mode === 'ai') {
-                lastAiResult = (winner === aiColor) ? 'win' : 'lose';
-            }
+        // Modal Functions
+        function showModal(id) {
+            document.getElementById(id).style.display = 'flex';
+        }
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
         }
 
-        function updateStatus() {
-            if (gameOver) return;
-            let currentTurn = turn === 'w' ? 'সাদা' : 'কালো';
+        // MCQ Timer Logic
+        let timerInterval;
+        function startMCQTimer() {
+            clearInterval(timerInterval);
+            let timeLeft = 15;
+            const display = document.getElementById('mcqTimerDisplay');
             
-            if (mode === 'twoDevice') {
-                if (myRole === turn) {
-                    statusEl.innerText = `আপনার চাল (${currentTurn}) দেওয়ার পালা...`;
+            timerInterval = setInterval(() => {
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    display.innerText = "Time's Up!";
+                    display.style.color = "red";
+                    // Play sound if not muted
+                    if(!isMuted) alert("MCQ Time over!"); 
                 } else {
-                    statusEl.innerText = `বন্ধুর চাল দেওয়ার প্রতীক্ষায় (${currentTurn})...`;
+                    display.innerText = `00:${timeLeft < 10 ? '0' : ''}${timeLeft}`;
+                    display.style.color = "var(--co-color)";
+                    timeLeft -= 1;
                 }
-            } else {
-                statusEl.innerText = `${currentTurn} দলের চালের পালা...`;
-            }
+            }, 1000);
         }
 
-        window.onload = () => {
-            changeMode();
-        };
+        // Dummy CO Score Update Logic
+        let currentScore = 50;
+        function updateScore(points) {
+            currentScore += points;
+            document.getElementById('demoScore').innerText = currentScore;
+        }
     </script>
 </body>
 </html>
