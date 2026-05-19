@@ -57,8 +57,7 @@ header{
 .nav-grid{ display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px }
 .nav-btn{
   background:var(--card); border:1px solid var(--border); border-radius:12px;
-  padding:20px 10px; text-align:center; cursor:pointer; transition:transform 0.2s,border-color 0.2s;
-  position: relative;
+  padding:20px 10px; text-align:center; cursor:pointer; transition:transform 0.2s,border-color 0.2s; position: relative;
 }
 .nav-btn:active{transform:scale(0.95)}
 .nav-btn:hover{border-color:var(--accent)}
@@ -93,13 +92,27 @@ textarea.input { resize: vertical; }
   background:none;border:none;color:var(--muted); font-size:12px;cursor:pointer;padding:4px 8px; font-weight: 500;
 }
 .bottom-nav-btn.active{color:var(--accent)}
+
 .bluelight-filter{
-  position:fixed;top:0;left:0;right:0;bottom:0; background:rgba(245,222,179,0.25);
+  position:fixed;top:0;left:0;right:0;bottom:0; background:rgba(243,156,18,0.14);
   pointer-events:none;z-index:9999;display:none;
 }
 .brightness-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0, 0, 0, 0); pointer-events: none; z-index: 9998;
+}
+.red-dot {
+  position: absolute; top: 6px; right: 6px; width: 10px; height: 10px;
+  background-color: var(--accent2); border-radius: 50%; display: none;
+  box-shadow: 0 0 6px var(--accent2);
+}
+.green-dot {
+  width: 10px; height: 10px; background-color: #2ecc71; border-radius: 50%;
+  display: inline-block; margin-right: 6px; box-shadow: 0 0 6px #2ecc71;
+}
+.new-text-badge {
+  font-size: 10px; color: var(--accent2); font-weight: bold;
+  background: #fdeaea; padding: 1px 4px; border-radius: 4px; margin-left: 6px;
 }
 .switch-link{ display:block;text-align:center;margin-top:15px;color:var(--accent); font-size:13px;text-decoration:underline;cursor:pointer; }
 .form-builder-row{ display:flex;align-items:center;gap:10px;margin-top:8px; }
@@ -120,15 +133,12 @@ th{background:var(--bg);color:var(--accent);}
 .battle-q-card {
   border-left: 4px solid var(--accent2); padding: 10px; margin-bottom: 10px; background: var(--bg); border-radius: 6px;
 }
-.indicator-dot {
-  position: absolute; top: 8px; right: 8px; width: 12px; height: 12px; border-radius: 50%; display: none; z-index: 10;
+.mcq-option-btn {
+  background: var(--card); border: 1px solid var(--border); padding: 12px;
+  border-radius: 8px; width: 100%; text-align: left; margin-top: 6px;
+  cursor: pointer; font-size: 14px; color: var(--text); transition: background 0.2s;
 }
-.indicator-dot.red { background-color: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
-.indicator-dot.green { background-color: #4caf50; box-shadow: 0 0 6px #4caf50; }
-.new-label-tag {
-  position: absolute; top: -5px; left: 50%; transform: translateX(-50%); background: var(--accent2);
-  color: white; font-size: 9px; font-weight: bold; padding: 1px 5px; border-radius: 4px; display: none; z-index: 11;
-}
+.mcq-option-btn:active { background: var(--border); }
 </style>
 </head>
 <body>
@@ -155,10 +165,11 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 let currentUser = null;
+let isMuted = false;
 const STORAGE_KEY = "yourchoice_user";
 const TAB_KEY = "yourchoice_tab_lock";
 
-function $(id){return document.getElementById(id);}
+function $(id){return document.getElementById(id)}
 window.$ = $;
 
 function toast(msg){
@@ -169,6 +180,15 @@ function toast(msg){
   setTimeout(()=>t.remove(),2000);
 }
 window.toast = toast;
+
+function triggerLocalNotification(title, bodyText) {
+  if (isMuted) return;
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body: bodyText });
+  } else {
+    console.log(`[Notification] ${title}: ${bodyText}`);
+  }
+}
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
@@ -196,8 +216,8 @@ function applySavedThemeAndBrightness() {
   const opacity = (100 - parseInt(savedVal)) / 100;
   if($('brightnessLayer')) $('brightnessLayer').style.backgroundColor = `rgba(0, 0, 0, ${opacity * 0.85})`;
 
-  const blueCutActive = localStorage.getItem("yc_bluecut") === "true";
-  if($('bluelight')) $('bluelight').style.display = blueCutActive ? 'block' : 'none';
+  const savedBlueCut = localStorage.getItem("yc_bluecut") || "off";
+  if($('bluelight')) $('bluelight').style.display = (savedBlueCut === "on") ? 'block' : 'none';
 }
 
 function getLevenshteinDistance(a, b) {
@@ -234,129 +254,79 @@ async function runAutoExpiryCheck(){
   const now = Date.now();
   const todayStr = new Date().toISOString().split('T')[0];
   
-  // ২০ দিন পর CO প্যানেল চ্যাট লগ এবং ১০০ দিন পর অন্য চ্যাট মুছে ফেলার টাইমস্ট্যাম্প
-  const coExpiryLimit = now - (20 * 24 * 60 * 60 * 1000);
-  const generalExpiryLimit = now - (100 * 24 * 60 * 60 * 1000);
+  const tagSnap = await get(ref(db, 'scroll_tag'));
+  if(tagSnap.exists() && tagSnap.val().lastDate && tagSnap.val().lastDate < todayStr){
+    await remove(ref(db, 'scroll_tag'));
+  }
+  const noticeSnap = await get(ref(db, 'notice_board'));
+  if(noticeSnap.exists() && noticeSnap.val().lastDate && noticeSnap.val().lastDate < todayStr){
+    await remove(ref(db, 'notice_board'));
+  }
 
-  // ১. CO মেসেজ ক্লিনআপ (২০ দিন)
-  const coMsgSnap = await get(ref(db, 'co_messages'));
-  if(coMsgSnap.exists()){
-    Object.entries(coMsgSnap.val()).forEach(([userSerial, msgSet]) => {
-      Object.entries(msgSet).forEach(async ([msgId, msgObj]) => {
-        if(msgObj.time && msgObj.time < coExpiryLimit) {
-          await remove(ref(db, `co_messages/${userSerial}/${msgId}`));
+  const litSnap = await get(ref(db, 'literature'));
+  if(litSnap.exists()){
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    Object.entries(litSnap.val()).forEach(async ([id, lit]) => {
+      if(lit.createdAt && (now - lit.createdAt) > ninetyDaysMs){
+        await remove(ref(db, 'literature/' + id));
+      }
+    });
+  }
+  
+  const battleSnap = await get(ref(db, 'battles'));
+  if(battleSnap.exists()){
+    Object.entries(battleSnap.val()).forEach(async ([bId, bData]) => {
+      if(bData.endTimestamp && now > bData.endTimestamp){
+        await remove(ref(db, 'battles/' + bId));
+        await remove(ref(db, `battle_submissions/${bId}`));
+      }
+    });
+  }
+
+  const mcqFightSnap = await get(ref(db, 'mcq_fights'));
+  if(mcqFightSnap.exists()){
+    Object.entries(mcqFightSnap.val()).forEach(async ([fId, fData]) => {
+      if(fData.expireTimestamp && now > fData.expireTimestamp) {
+        await remove(ref(db, 'mcq_fights/' + fId));
+      }
+    });
+  }
+
+  const twentyDaysMs = 20 * 24 * 60 * 60 * 1000;
+  const hundredDaysMs = 100 * 24 * 60 * 60 * 1000;
+
+  const coChatsSnap = await get(ref(db, 'co_messages'));
+  if(coChatsSnap.exists()){
+    Object.entries(coChatsSnap.val()).forEach(([userKey, msgCluster]) => {
+      Object.entries(msgCluster).forEach(async ([msgId, msgNode]) => {
+        if(msgNode.time && (now - msgNode.time) > twentyDaysMs) {
+          await remove(ref(db, `co_messages/${userKey}/${msgId}`));
         }
       });
     });
   }
 
-  // ২. ওয়ান-টু-ওয়ান ফ্রেন্ড চ্যাট ক্লিনআপ (১০০ দিন)
-  const chatsSnap = await get(ref(db, 'chats'));
-  if(chatsSnap.exists()){
-    Object.entries(chatsSnap.val()).forEach(([chatRoomId, msgSet]) => {
-      Object.entries(msgSet).forEach(async ([msgId, msgObj]) => {
-        if(msgObj.time && msgObj.time < generalExpiryLimit) {
+  const friendChatsSnap = await get(ref(db, 'chats'));
+  if(friendChatsSnap.exists()){
+    Object.entries(friendChatsSnap.val()).forEach(([chatRoomId, msgCluster]) => {
+      Object.entries(msgCluster).forEach(async ([msgId, msgNode]) => {
+        if(msgNode.time && (now - msgNode.time) > hundredDaysMs) {
           await remove(ref(db, `chats/${chatRoomId}/${msgId}`));
         }
       });
     });
   }
 
-  // ৩. গ্রুপ চ্যাট লগ ক্লিনআপ (১০০ দিন)
   const groupChatsSnap = await get(ref(db, 'group_chats'));
   if(groupChatsSnap.exists()){
-    Object.entries(groupChatsSnap.val()).forEach(([groupId, msgSet]) => {
-      Object.entries(msgSet).forEach(async ([msgId, msgObj]) => {
-        if(msgObj.time && msgObj.time < generalExpiryLimit) {
-          await remove(ref(db, `group_chats/${groupId}/${msgId}`));
+    Object.entries(groupChatsSnap.val()).forEach(([gId, msgCluster]) => {
+      Object.entries(msgCluster).forEach(async ([msgId, msgNode]) => {
+        if(msgNode.time && (now - msgNode.time) > hundredDaysMs) {
+          await remove(ref(db, `group_chats/${gId}/${msgId}`));
         }
       });
     });
   }
-
-  const tagSnap = await get(ref(db, 'scroll_tag'));
-  if(tagSnap.exists() && tagSnap.val().lastDate && tagSnap.val().lastDate < todayStr){
-    await remove(ref(db, 'scroll_tag'));
-  }
-
-  const noticeSnap = await get(ref(db, 'notice_board'));
-  if(noticeSnap.exists() && noticeSnap.val().lastDate && noticeSnap.val().lastDate < todayStr){
-    await remove(ref(db, 'notice_board'));
-  }
-
-  const appsSnap = await get(ref(db, 'applications'));
-  if(appsSnap.exists()){
-    Object.entries(appsSnap.val()).forEach(([id, app]) => {
-      if(app.lastDate && app.lastDate < todayStr){
-        remove(ref(db, 'applications/' + id));
-        remove(ref(db, 'submitted_applications/' + id));
-      }
-    });
-  }
-
-  const litSnap = await get(ref(db, 'literature'));
-  if(litSnap.exists()){
-    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    Object.entries(litSnap.val()).forEach(([id, lit]) => {
-      if(lit.createdAt && (now - lit.createdAt) > ninetyDaysMs){
-        remove(ref(db, 'literature/' + id));
-      }
-    });
-  }
-}
-
-function handlePushNotification(title, body) {
-  if (localStorage.getItem("yc_mute_state") === "true") return; 
-  if (!("Notification" in window)) return;
-  if (Notification.permission === "granted") {
-    new Notification(title, { body });
-  } else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then(permission => {
-      if (permission === "granted") new Notification(title, { body });
-    });
-  }
-}
-
-function listenForGlobalIndicators() {
-  const sections = ['quests', 'live_battles', 'pak_chan_ruti', 'applications', 'knowledge', 'literature', 'custom_games', 'events', 'custom_tools'];
-  
-  sections.forEach(sec => {
-    onValue(ref(db, `indicators/${sec}`), snap => {
-      if(snap.exists()) {
-        const timestamp = snap.val().timestamp;
-        const lastSeen = parseInt(localStorage.getItem(`seen_${sec}`) || "0");
-        if(timestamp > lastSeen) {
-          const redDot = $(`dot_${sec}`);
-          const newTag = $(`new_${sec}`);
-          if (redDot) redDot.style.display = 'block';
-          if (newTag) newTag.style.display = 'block';
-        }
-      }
-    });
-  });
-
-  onValue(ref(db, 'chats'), snap => {
-    const greenDot = $('dot_contact');
-    if(greenDot && snap.exists()) {
-      greenDot.style.display = 'block';
-    }
-  });
-  onValue(ref(db, 'group_chats'), snap => {
-    const greenDot = $('dot_contact');
-    if(greenDot && snap.exists()) greenDot.style.display = 'block';
-  });
-  onValue(ref(db, 'co_messages'), snap => {
-    const greenDot = $('dot_contact');
-    if(greenDot && snap.exists()) greenDot.style.display = 'block';
-  });
-}
-
-function markSectionAsSeen(sec) {
-  localStorage.setItem(`seen_${sec}`, Date.now().toString());
-  const redDot = $(`dot_${sec}`);
-  const newTag = $(`new_${sec}`);
-  if (redDot) redDot.style.display = 'none';
-  if (newTag) newTag.style.display = 'none';
 }
 
 function renderAuth(){
@@ -378,7 +348,6 @@ window.toggleAuthMode = function(isRecovery){
   if(isRecovery){
     card.innerHTML = `
       <h2 style="text-align:center;margin-bottom:20px;color:var(--accent);">Account Recovery</h2>
-      <p style="font-size:12px; color:var(--muted); text-align:center; margin-bottom:10px;">তোমার পুরনো সিরিয়াল ও পাসওয়ার্ডটি নিচে বসাও</p>
       <input type="text" class="input" id="recoverySerial" placeholder="Old Serial No (YC_XXXXXX)">
       <input type="password" class="input" id="recoveryPass" placeholder="Password">
       <button class="btn" onclick="recoverAccount()">Recover Account</button>
@@ -392,7 +361,6 @@ window.login = async function(){
   const password = $('password').value.trim();
   if(!name || !password){ toast('নাম এবং পাসওয়ার্ড দুটোই দেওয়া বাধ্যতামুলক!'); return; }
   
-  toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
   try {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
     let randomPart = "";
@@ -401,9 +369,7 @@ window.login = async function(){
     
     currentUser = {
       name: name, serial: generatedSerial, password: password,
-      isCO: false, score: 0,
-      createdAt: Date.now(), lastActive: Date.now(),
-      isBlocked: false, profileUpdated: false
+      isCO: false, score: 0, createdAt: Date.now(), isBlocked: false
     };
     
     await set(ref(db, 'users/' + generatedSerial), currentUser);
@@ -418,21 +384,18 @@ window.recoverAccount = async function(){
   const password = $('recoveryPass').value.trim();
   if(!serial || !password){ toast('সিরিয়াল এবং পাসওয়ার্ড দেওয়া বাধ্যতামুলক'); return; }
   
-  toast('অ্যাকাউন্ট খোঁজা হচ্ছে...');
   try {
     const snap = await get(ref(db, 'users/' + serial));
     if(snap.exists()){
       let fetchedUser = snap.val();
       if(fetchedUser.password && fetchedUser.password !== password) {
-        toast('ভুল পাসওয়ার্ড! আবার চেষ্টা করো।');
-        return;
+        toast('ভুল পাসওয়ার্ড!'); return;
       }
       currentUser = fetchedUser;
       if(currentUser.isBlocked) { renderBlockedScreen(); return; }
-      toast('স্বাগতম ফিরে আসার জন্য, ' + currentUser.name);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
       syncUserAndRender();
-    } else { toast('এই সিরিয়াল নাম্বারের কোনো অ্যাকাউন্ট পাওয়া যায়নি!'); }
+    } else { toast('অ্যাকাউন্ট পাওয়া যায়নি!'); }
   } catch(e) { toast('কানেকশন এরর!'); }
 }
 
@@ -443,40 +406,14 @@ async function syncUserAndRender() {
     if(snap.exists()) {
       currentUser = snap.val();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-      if(currentUser.isBlocked) {
-        renderBlockedScreen();
-      } else if(!currentUser.password) {
-        renderForcePasswordScreen();
-      } else {
-        renderHome();
-      }
+      if(currentUser.isBlocked) { renderBlockedScreen(); } 
+      else { renderHome(); }
     } else {
-      localStorage.removeItem(STORAGE_KEY);
-      renderAuth();
+      localStorage.removeItem(STORAGE_KEY); renderAuth();
     }
   });
   checkTabLock();
   applySavedThemeAndBrightness();
-}
-
-function renderForcePasswordScreen() {
-  $('app').innerHTML = `
-    <div class="screen active">
-      <div class="card" style="margin-top:100px; text-align:center; border-color:var(--warning);">
-        <h2 style="color:var(--warning); margin-bottom:15px;">পাসওয়ার্ড সেট করো 🔒</h2>
-        <p style="font-size:14px; margin-bottom:15px;">তোমার সুরক্ষার স্বার্থে অ্যাকাউন্টে একটি পাসওয়ার্ড সেট করা বাধ্যতামূলক। অন্যথায় অ্যাপ ব্যবহার করা যাবে না।</p>
-        <input type="password" class="input" id="forcePassInput" placeholder="নতুন পাসওয়ার্ড দিন">
-        <button class="btn btn-success" onclick="saveForcedPassword()">Save Password & Enter</button>
-      </div>
-    </div>
-  `;
-}
-
-window.saveForcedPassword = async function() {
-  const p = $('forcePassInput').value.trim();
-  if(!p || p.length < 4) return toast('পাসওয়ার্ড ন্যূনতম ৪ অক্ষরের দিন!');
-  await update(ref(db, 'users/' + currentUser.serial), { password: p });
-  toast('পাসওয়ার্ড সেট সফল হয়েছে!');
 }
 
 function renderBlockedScreen() {
@@ -484,27 +421,16 @@ function renderBlockedScreen() {
     <div class="screen active">
       <div class="card" style="margin-top:100px; text-align:center; border-color:var(--accent2);">
         <h2 style="color:var(--accent2); margin-bottom:15px;">অ্যাকাউন্ট ব্লকড! 🛑</h2>
-        <p style="font-size:14px; margin-bottom:15px;">তোমাকে সাময়িকভাবে অ্যাপ থেকে ব্লক করা হয়েছে। তোমার কোন স্কোর পরিবর্তন হবে না।</p>
-        <button class="btn btn-secondary" onclick="logoutWithNotice()">Logout</button>
+        <button class="btn btn-secondary" onclick="localStorage.clear(); location.reload();">Exit App</button>
       </div>
     </div>
   `;
 }
 
-function logoutWithNotice() {
-  localStorage.removeItem(STORAGE_KEY);
-  currentUser = null;
-  window.location.reload();
-}
-window.logoutWithNotice = logoutWithNotice;
-
 function renderHome(){
   const u = currentUser;
   if(!u) return renderAuth();
-  if(u.isBlocked) return renderBlockedScreen();
   runAutoExpiryCheck();
-
-  const isMuted = localStorage.getItem("yc_mute_state") === "true";
 
   $('app').innerHTML = `
     <header>
@@ -521,73 +447,36 @@ function renderHome(){
     </header>
     
     <div class="main-content">
-      <div class="card">
-        <h4 style="font-size:13px; margin-bottom:6px;">🌓 Display & Sound controls</h4>
-        <div style="display:flex; justify-content:nav-grid; flex-direction:column; gap:8px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <button class="btn btn-secondary" style="margin:0; padding:6px 12px; font-size:12px; width:auto;" onclick="toggleDarkThemeLive()">Toggle Dark Mode</button>
-            <button class="btn ${isMuted ? 'btn-danger' : 'btn-success'}" id="muteBtn" style="margin:0; padding:6px 12px; font-size:12px; width:auto;" onclick="toggleMuteState()">${isMuted ? 'Muted (Notifications Blocked)' : '🔊 Notification Allowed'}</button>
-          </div>
-          <div style="display:flex; align-items:center; gap:10px; background:var(--bg); padding:8px; border-radius:8px;">
-            <span style="font-size:11px;">🔆 Brightness:</span>
-            <input type="range" id="brightRange" min="15" max="100" value="${localStorage.getItem('yc_brightness') || 100}" oninput="alterAppBrightnessLive(this.value)" style="flex:1; cursor:pointer;">
-            <button class="btn btn-warning" id="blueCutToggleBtn" style="margin:0; padding:4px 8px; font-size:11px; width:auto;" onclick="toggleBlueCutLive()">Blue-cut</button>
-          </div>
+      <div class="card" style="background:var(--card); border:1px solid var(--border);">
+        <h4 style="font-size:13px; margin-bottom:6px;">🌓 কন্ট্রোল প্যানেল</h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <button class="btn btn-secondary" style="margin:0; padding:6px 10px; font-size:11px; width:auto;" onclick="toggleDarkThemeLive()">Dark Mode</button>
+          <button class="btn ${isMuted?'btn-danger':'btn-success'}" id="muteBtn" style="margin:0; padding:6px 10px; font-size:11px; width:auto;" onclick="toggleMuteSettings()">${isMuted?'Mute: ON':'Mute: OFF'}</button>
+          <button class="btn btn-warning" style="margin:0; padding:6px 10px; font-size:11px; width:auto;" id="blueCutBtn" onclick="toggleBlueCutFilter()">Blue-cut</button>
+        </div>
+        <div style="margin-top:8px; display:flex; align-items:center; gap:6px;">
+          <span style="font-size:11px;">🔆 Brightness:</span>
+          <input type="range" id="brightRange" min="20" max="100" value="${localStorage.getItem('yc_brightness') || 100}" oninput="alterAppBrightnessLive(this.value)" style="flex:1; cursor:pointer;">
         </div>
       </div>
 
-      <div class="card" style="background:#fffde7; border-left:5px solid var(--warning); position: relative;">
-        <span class="new-label-tag" id="new_notice_board">New</span>
-        <h3 style="color:var(--warning)">📌 নোটিশ বোর্ড (Notice Board)</h3>
-        <p id="boardNoticeText" style="margin-top:8px; font-size:14px; white-space:pre-wrap; line-height:1.4; color:#1a1a1a;">কোনো নোটিশ নেই।</p>
+      <div class="card" style="background:#fffide7; border-left:5px solid var(--warning);">
+        <h3 style="color:var(--warning); font-size:14px;">📌 নোটিশ বোর্ড</h3>
+        <p id="boardNoticeText" style="margin-top:4px; font-size:13px; color:#1a1a1a;">লোড হচ্ছে...</p>
       </div>
 
       <div class="nav-grid">
-        <div class="nav-btn" onclick="showQuest()">
-          <span class="new-label-tag" id="new_quests">New</span>
-          <div class="indicator-dot red" id="dot_quests"></div>
-          <div class="icon">📚</div><div class="label">Quest</div>
-        </div>
-        <div class="nav-btn" onclick="showContact()">
-          <div class="indicator-dot green" id="dot_contact"></div>
-          <div class="icon">👥</div><div class="label">Contact</div>
-        </div>
-        <div class="nav-btn" onclick="showBattle()">
-          <span class="new-label-tag" id="new_live_battles">New</span>
-          <div class="indicator-dot red" id="dot_live_battles"></div>
-          <div class="icon">⚔️</div><div class="label">Battle Stream</div>
-        </div>
-        <div class="nav-btn" onclick="markSectionAsSeen('pak_chan_ruti')">
-          <span class="new-label-tag" id="new_pak_chan_ruti">New</span>
-          <div class="indicator-dot red" id="dot_pak_chan_ruti"></div>
-          <div class="icon">🍞</div><div class="label">Pak Chan Ruti</div>
-        </div>
-        <div class="nav-btn" onclick="showGames()">
-          <span class="new-label-tag" id="new_custom_games">New</span>
-          <div class="icon">🎮</div><div class="label">Games</div>
-        </div>
-        <div class="nav-btn" onclick="showTools()">
-          <span class="new-label-tag" id="new_custom_tools">New</span>
-          <div class="icon">🛠️</div><div class="label">Tools</div>
-        </div>
-        <div class="nav-btn" onclick="showEvent()">
-          <span class="new-label-tag" id="new_events">New</span>
-          <div class="icon">📅</div><div class="label">Event</div>
-        </div>
-        <div class="nav-btn" onclick="showApp()">
-          <span class="new-label-tag" id="new_applications">New</span>
-          <div class="icon">📄</div><div class="label">Application</div>
-        </div>
-        <div class="nav-btn" onclick="showKnowledge()">
-          <span class="new-label-tag" id="new_knowledge">New</span>
-          <div class="icon">🧠</div><div class="label">Knowledge</div>
-        </div>
-        <div class="nav-btn" onclick="showLiterature()">
-          <span class="new-label-tag" id="new_literature">New</span>
-          <div class="icon">📖</div><div class="label">Literature</div>
-        </div>
+        <div class="nav-btn" onclick="showQuest()"><div class="red-dot" id="dot_quest"></div><div class="icon">📚</div><div class="label">Quest</div></div>
+        <div class="nav-btn" onclick="showContact()"><div class="red-dot" id="dot_contact"></div><div class="icon">👥</div><div class="label">Contact</div></div>
+        <div class="nav-btn" onclick="showBattleStreamPortal()"><div class="red-dot" id="dot_battle"></div><div class="icon">⚔️</div><div class="label">Live Battle</div></div>
+        <div class="nav-btn" onclick="showGames()"><div class="icon">🎮</div><div class="label">Games</div></div>
+        <div class="nav-btn" onclick="showTools()"><div class="icon">🛠️</div><div class="label">Tools</div></div>
+        <div class="nav-btn" onclick="showEvent()"><div class="icon">📅</div><div class="label">Event</div></div>
+        <div class="nav-btn" onclick="showApp()"><div class="icon">📄</div><div class="label">Application</div></div>
+        <div class="nav-btn" onclick="showKnowledge()"><div class="icon">🧠</div><div class="label">Knowledge</div></div>
+        <div class="nav-btn" onclick="showLiterature()"><div class="icon">📖</div><div class="label">Literature</div></div>
         <div class="nav-btn" onclick="showUserProfileScreen()"><div class="icon">👤</div><div class="label">Profile</div></div>
-        <div class="nav-btn" style="grid-column: span 2;" onclick="showLinksScreen()"><div class="icon">🔗</div><div class="label">Links Portal</div></div>
+        <div class="nav-btn" style="grid-column: span 2;" onclick="showLinksScreen()"><div class="icon">🔗</div><div class="label">Important Links Portal</div></div>
       </div>
     </div>
     
@@ -598,26 +487,33 @@ function renderHome(){
   `;
   updateNetworkStatus();
   loadScrollTagAndNotice();
+  listenGlobalRedDots();
   checkCOSetup();
   applySavedThemeAndBrightness();
-  listenForGlobalIndicators();
 }
 window.renderHome = renderHome;
 
-window.toggleMuteState = function() {
-  const state = localStorage.getItem("yc_mute_state") === "true";
-  localStorage.setItem("yc_mute_state", (!state).toString());
-  const btn = $('muteBtn');
-  if(btn) {
-    btn.className = !state ? 'btn btn-danger' : 'btn btn-success';
-    btn.textContent = !state ? 'Muted (Notifications Blocked)' : '🔊 Notification Allowed';
+function listenGlobalRedDots() {
+  onValue(ref(db, 'quests'), snap => { if(snap.exists() && $('dot_quest')) $('dot_quest').style.display = 'block'; });
+  onValue(ref(db, 'battles'), snap => { if(snap.exists() && $('dot_battle')) $('dot_battle').style.display = 'block'; });
+  onValue(ref(db, 'mcq_fights'), snap => { if(snap.exists() && $('dot_battle')) $('dot_battle').style.display = 'block'; });
+}
+
+window.toggleMuteSettings = function() {
+  isMuted = !isMuted;
+  toast(isMuted ? 'নোটিফিকেশন অ্যালার্ট মিউট করা হয়েছে!' : 'নোটিফিকেশন আনমিউট হয়েছে।');
+  if($('muteBtn')) {
+    $('muteBtn').textContent = isMuted ? 'Mute: ON' : 'Mute: OFF';
+    $('muteBtn').className = isMuted ? 'btn btn-danger' : 'btn btn-success';
   }
 }
 
-window.toggleBlueCutLive = function() {
-  const active = localStorage.getItem("yc_bluecut") === "true";
-  localStorage.setItem("yc_bluecut", (!active).toString());
-  if($('bluelight')) $('bluelight').style.display = !active ? 'block' : 'none';
+window.toggleBlueCutFilter = function() {
+  const current = localStorage.getItem("yc_bluecut") || "off";
+  const target = current === "off" ? "on" : "off";
+  localStorage.setItem("yc_bluecut", target);
+  if($('bluelight')) $('bluelight').style.display = (target === "on") ? 'block' : 'none';
+  toast(target === "on" ? 'Blue-cut ফিল্টার অন হয়েছে' : 'Blue-cut ফিল্টার অফ হয়েছে');
 }
 
 window.toggleDarkThemeLive = function() {
@@ -633,447 +529,229 @@ window.alterAppBrightnessLive = function(val) {
   if($('brightnessLayer')) $('brightnessLayer').style.backgroundColor = `rgba(0, 0, 0, ${opacity * 0.85})`;
 }
 
-window.showUserProfileScreen = function() {
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  const u = currentUser;
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header>
-        <div class="header-top">
-          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;">← Back</button>
-          <span>My Profile</span><span></span>
-        </div>
-      </header>
-      <div class="main-content">
-        <div class="card" style="border-left:5px solid var(--accent);">
-          <div style="font-size:12px; font-weight:bold; color:var(--muted)">👤 আমার আইডি নাম্বার: <span class="copyable" style="color:var(--accent); font-size:13px;">${u.serial}</span></div>
-          <div style="font-size:12px; font-weight:bold; color:var(--accent2); margin-top:4px;">🔒 পাসওয়ার্ড: <span class="copyable" style="font-size:13px;">${u.password || 'Not Set'}</span></div>
-          <h3 style="margin:12px 0 10px 0;">My Profile Details</h3>
-          <div class="form-builder-row"><label>নাম:</label><input class="input" id="pName" value="${u.name || ''}" disabled></div>
-          <div class="form-builder-row"><label>ক্লাস (Class):</label><input class="input" id="pClass" value="${u.class || ''}" placeholder="পূরণ করো"></div>
-          <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}" placeholder="পূরণ করো"></div>
-          <div class="form-builder-row"><label>বোর্ড (Board):</label><input class="input" id="pBoard" value="${u.board || ''}" placeholder="পূরণ করো"></div>
-          <div class="form-builder-row"><label>ঠিকানা:</label><input class="input" id="pAddress" value="${u.address || ''}" placeholder="পূরণ করো"></div>
-          <div class="form-builder-row"><label>মোবাইল নং:</label><input class="input" id="pMobile" value="${u.mobile || ''}" placeholder="পূ革 করো"></div>
-          <div class="form-builder-row"><label>অন্যান্য:</label><input class="input" id="pOthers" value="${u.others || ''}" placeholder="পূরণ করো"></div>
-          <p style="font-size:11px; color:var(--accent2); margin-top:8px; font-weight:bold;">* দ্বিতীয়বার বা তার পরে প্রোফাইল আপডেট করলে ৫০ স্কোর কাটা যাবে।</p>
-          <button class="btn btn-success" onclick="saveUserProfile()">Save Profile Data</button>
-          <button class="btn btn-danger" style="margin-top:8px;" onclick="logoutWithNotice()">Log Out</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function updateNetworkStatus(){
-  const dot = $('netDot'); if(!dot) return;
-  window.addEventListener('online', ()=>dot.classList.remove('offline'));
-  window.addEventListener('offline', ()=>dot.classList.add('offline'));
-  if(!navigator.onLine) dot.classList.add('offline');
-}
-
-function loadScrollTagAndNotice(){
-  onValue(ref(db, 'scroll_tag'), snap=>{
-    const data = snap.val(); const element = $('noticeText');
-    if(data && element) element.textContent = data.text || 'Welcome!';
-  });
-  onValue(ref(db, 'notice_board'), snap=>{
-    const data = snap.val(); const element = $('boardNoticeText');
-    if(data && element) element.textContent = data.text || 'বর্তমানে কোনো নোটিশ নেই।';
-  });
-}
-
-window.saveUserProfile = async function() {
-  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
-  if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
-
-  const profileData = {
-    class: $('pClass').value.trim(),
-    school: $('pSchool').value.trim(),
-    board: $('pBoard').value.trim(),
-    address: $('pAddress').value.trim(),
-    mobile: $('pMobile').value.trim(),
-    others: $('pOthers').value.trim()
-  };
-
-  let currentScore = uCheckSnap.val().score || 0;
-  let hasUpdatedBefore = uCheckSnap.val().profileUpdated || false;
-  let updates = { ...profileData };
-
-  if(hasUpdatedBefore) {
-    if(currentScore < 50) {
-      toast('প্রোফাইল এডিট করার জন্য পর্যাপ্ত স্কোর (কমপক্ষে ৫০) নেই!');
-      return;
-    }
-    updates.score = currentScore - 50;
-    toast('প্রোফাইল পরিবর্তনের জন্য ৫০ স্কোর কাটা হলো!');
-  } else {
-    updates.profileUpdated = true;
-    toast('প্রথমবার প্রোফাইল ডেটা সফলভাবে সেভ হলো!');
-  }
-
-  await update(ref(db, 'users/' + currentUser.serial), updates);
-}
-
-window.showQuest = function(){
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  markSectionAsSeen('quests');
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header>
-        <div class="header-top">
-          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;">← Back</button>
-          <span>Quest Box</span><span></span>
-        </div>
-      </header>
-      <div class="main-content" id="questList"></div>
-    </div>
-  `;
-  loadQuests();
-}
-
-function loadQuests(){
-  onValue(query(ref(db, 'quests'), orderByChild('createdAt')), snap=>{
-    let html = '<div class="card"><h3 style="color:var(--accent)">Available Quests</h3></div>';
-    if(snap.exists()){
-      let items = [];
-      snap.forEach(child => { items.push({id: child.key, ...child.val()}); });
-      items.reverse(); 
-      items.forEach(q => {
-        html += `
-          <div class="card">
-            <div onclick="startQuest('${q.id}')" style="cursor:pointer;">
-              <div style="font-size:12px;color:var(--muted)">${q.type.toUpperCase()}</div>
-              <div style="margin:8px 0;font-weight:600">${q.type === 'picture' ? 'Picture Quest (Click to open)' : q.question}</div>
-              <div style="font-size:12px;color:var(--success)">+${q.points} points | Minus: ${q.negative || 0}</div>
-            </div>
-            ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('quests/${q.id}', 'কুইজ প্রশ্ন')">Delete</button>` : ''}
-          </div>
-        `;
-      });
-    }else{ html += '<div class="card">No quests yet!</div>'; }
-    if($('questList')) $('questList').innerHTML = html;
-  });
-}
-
-window.startQuest = async function(id){
-  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
-  if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
-  
-  const snap = await get(ref(db, 'quests/' + id)); if(!snap.exists()) return;
-  const q = snap.val();
-  const ansSnap = await get(ref(db, 'quest_answers/' + currentUser.serial + '/' + id));
-  
-  if(ansSnap.exists()){
-    $('app').innerHTML = `<div class="screen active"><header><button onclick="showQuest()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button></header><div class="main-content"><div class="card" style="background:#e8f5e9; color:var(--success)">তুমি ইতিমধ্যে এই প্রশ্নের উত্তর দিয়েছ!<br>তোমার উত্তর: ${ansSnap.val().answer} (প্রাপ্ত স্কোর: ${ansSnap.val().score})</div></div></div>`;
-    return;
-  }
-  
-  if(q.type === 'break_hint'){
-    window.currentHintIndex = 0;
-    window.hintArray = q.hints ? q.hints.split('|') : [];
-    renderBreakHintQuest(id, q);
-  } else {
-    let contentHTML = q.type === 'picture' ? (isValidURL(q.question) ? `<img src="${q.question}" style="width:100%;max-height:300px;object-fit:contain;border-radius:8px;margin:10px 0">` : 'Invalid Image') : `<h3 style="margin:10px 0">${q.question}</h3>`;
-    let answerHTML = '';
-    
-    if(q.type === 'mcq'){
-      q.options.forEach(opt=>{ answerHTML += `<button class="btn btn-secondary" style="margin-top:5px;" onclick="submitQuestAnswer('${id}','${opt.trim()}')">${opt.trim()}</button>`; });
-    }else{
-      answerHTML = `<input class="input" id="qAns" placeholder="উত্তর টাইপ করো..."><button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>`;
-    }
-    $('app').innerHTML = `<div class="screen active"><header><button onclick="showQuest()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button></header><div class="main-content"><div class="card">${contentHTML}${answerHTML}</div></div></div>`;
-  }
-}
-
-function renderBreakHintQuest(id, q) {
-  let activeHint = window.hintArray[window.currentHintIndex] || "কোনো হিন্ট উপলব্ধ নেই";
-  let pointAward = 10 - window.currentHintIndex;
-  if(pointAward < 1) pointAward = 1; 
-
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="showQuest()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button></header>
-      <div class="main-content">
-        <div class="card" style="border-top:4px solid var(--warning);">
-          <h3 style="color:var(--warning)">Break the Hint Quest 🧠</h3>
-          <p style="margin:10px 0; font-size:14px; font-weight:bold; background:#fff3e0; padding:10px; border-radius:6px; color:#1a1a1a;">হিন্ট নাম্বার ${window.currentHintIndex + 1}: ${activeHint}</p>
-          <p style="font-size:12px; color:var(--success); font-weight:bold; margin-bottom:10px;">💡 এই হিন্টে সঠিক উত্তর দিলে পাবে: +${pointAward} স্কোর</p>
-          
-          <input class="input" id="bhAns" placeholder="তোমার গেস করা উত্তরটি লেখো...">
-          <button class="btn" onclick="submitBreakHintAnswer('${id}', $('bhAns').value)">এই হিন্টেই উত্তর দাও</button>
-          
-          ${window.currentHintIndex < 9 && window.currentHintIndex < window.hintArray.length - 1 ? 
-            `<button class="btn btn-secondary" style="margin-top:8px;" onclick="nextHintStep('${id}')">উত্তর না দিয়ে পরের হিন্ট দেখবো (Skip Hint)</button>` : 
-            `<p style="color:var(--accent2); font-size:12px; font-weight:bold; margin-top:10px; text-align:center;">⚠️ এটিই শেষ চূড়ান্ত হিন্ট! ভুল করলে বা না পারলে -৫ পয়েন্ট কাটা যাবে।</p>
-             <button class="btn btn-danger" style="margin-top:8px;" onclick="failBreakHintFinal('${id}')">আমি পারলাম না (Final Give Up -5)</button>`
-          }
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-window.nextHintStep = function(id) {
-  window.currentHintIndex++;
-  get(ref(db, 'quests/' + id)).then(snap => {
-    renderBreakHintQuest(id, snap.val());
-  });
-}
-
-window.submitBreakHintAnswer = async function(id, ans) {
-  if(!ans || !ans.trim()) return toast('উত্তর ফাঁকা রাখা যাবে না!');
-  
-  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
-  if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
-
-  const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
-  let isCorrect = checkAnswerSmart(ans, q.answer);
-  
-  if(isCorrect) {
-    let finalAwardScore = 10 - window.currentHintIndex;
-    if(finalAwardScore < 1) finalAwardScore = 1;
-
-    await set(ref(db, 'quest_answers/' + currentUser.serial + '/' + id), { answer: ans, score: finalAwardScore });
-    let newScore = (uCheckSnap.val().score || 0) + finalAwardScore;
-    await update(ref(db, 'users/' + currentUser.serial), { score: newScore });
-    
-    alert(`🎉 সঠিক উত্তর! প্রাপ্ত স্কোর: +${finalAwardScore}`);
-    showQuest();
-  } else {
-    toast('❌ ভুল বা অমিল উত্তর! আবার চেষ্টা করো।');
-  }
-}
-
-window.failBreakHintFinal = async function(id) {
-  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
-  if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
-
-  await set(ref(db, 'quest_answers/' + currentUser.serial + '/' + id), { answer: "Failed/GivenUp", score: -5 });
-  let newScore = (uCheckSnap.val().score || 0) - 5;
-  await update(ref(db, 'users/' + currentUser.serial), { score: newScore });
-  
-  alert('🧠 ১০টি হিন্ট শেষ! ৫ পয়েন্ট কেটে নেওয়া হলো।');
-  showQuest();
-}
-
-window.submitQuestAnswer = async function(id, ans){
-  if(!ans || !ans.trim()) return toast('উত্তর খালি রাখা যাবে না!');
-  
-  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
-  if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
-
-  const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
-  let targetCorrectAns = q.answer || '';
-  
-  let isCorrect = (q.type === 'mcq') ? (ans.toLowerCase().trim() === targetCorrectAns.toLowerCase().trim()) : checkAnswerSmart(ans, targetCorrectAns);
-  
-  let minusPoints = q.negative ? parseInt(q.negative) : 0;
-  let score = isCorrect ? parseInt(q.points) : -minusPoints;
-  
-  await set(ref(db, 'quest_answers/' + currentUser.serial + '/' + id), { answer: ans, score: score });
-  
-  let newTotalScore = (uCheckSnap.val().score || 0) + score;
-  if(newTotalScore < 0) newTotalScore = 0;
-  await update(ref(db, 'users/' + currentUser.serial), { score: newTotalScore });
-  
-  toast(isCorrect ? 'সঠিক উত্তর! পয়েন্ট যোগ হয়েছে।' : `ভুল বা অমিল উত্তর! ${minusPoints} পয়েন্ট কাটা গেল।`);
-  showQuest();
-}
-
-window.showLinksScreen = function() {
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Important Links Portal</span></header>
-      <div class="main-content" id="linksContainer">Loading links...</div>
-    </div>
-  `;
-  onValue(ref(db, 'shared_links'), snap => {
-    let html = '';
-    if(snap.exists()){
-      let items = Object.entries(snap.val());
-      items.reverse(); 
-      items.forEach(([id, l]) => {
-        html += `
-          <div class="card" style="border-left:4px solid var(--accent)">
-            <strong>🔗 ${l.title}</strong>
-            <p style="font-size:12px; color:var(--muted); margin:4px 0;">${l.description || ''}</p>
-            <a href="${l.url}" target="_blank" style="color:var(--accent); font-size:13px; font-weight:bold; display:inline-block; margin-top:4px;">লিঙ্কটি ওপেন করো →</a>
-            ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('shared_links/${id}', 'লিঙ্ক')">Delete</button>` : ''}
-          </div>
-        `;
-      });
-    } else { html = '<div class="card">কোনো লিঙ্ক শেয়ার করা নেই।</div>'; }
-    if($('linksContainer')) $('linksContainer').innerHTML = html;
-  });
-}
-
-window.deleteItemLive = function(dbNodePath, itemLabel) {
-  if(confirm(`⚠️ তুমি কি নিশ্চিত যে এই ${itemLabel}টি সার্ভার থেকে চিরতরে ডিলিট করতে চাও?`)) {
-    remove(ref(db, dbNodePath)).then(() => {
-      toast(`${itemLabel} সফলভাবে সার্ভার থেকে ডিলিট হয়েছে!`);
-    }).catch(() => {
-      toast('ডিলিট করতে ব্যর্থ হয়েছে!');
-    });
-  }
-}
-
 window.showContact = function(){
   if(currentUser?.isBlocked) return renderBlockedScreen();
-  const greenDot = $('dot_contact');
-  if(greenDot) greenDot.style.display = 'none';
-
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Contact Center</span><button onclick="showFindUser()" style="background:none;border:none;color:var(--accent);cursor:pointer;">+ Find Friend</button></header>
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Home</button><span>Contact & Channels</span><button onclick="showFindUser()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-weight:bold;">+ Find Friend</button></header>
       <div class="main-content">
-        <button class="btn btn-danger" onclick="openCOChat()" style="margin-bottom:15px; font-weight:bold;">📞 Contact CO (Chief Officer)</button>
+        
+        <div class="card" style="border-left:5px solid var(--accent2); background:#fff9f9;" onclick="openCOChat()">
+          <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+            <div><span class="green-dot" id="co_chat_dot" style="display:none;"></span><strong>📞 Contact CO Panel</strong><br><small style="color:var(--muted)">সরাসরি সিওর সাথে মেসেজে যোগাযোগ</small></div>
+            <span id="co_new_badge"></span>
+          </div>
+        </div>
+
         <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <h3 style="color:var(--accent)">Groups</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="color:var(--accent); font-size:15px;">👥 Groups Channel</h3>
             <button class="btn btn-success" style="width:auto; margin:0; padding:6px 12px; font-size:12px;" onclick="showCreateGroupScreen()">+ Create Group</button>
           </div>
-          <div id="groupChatList">Loading groups...</div>
+          <div id="groupChatList">গ্রুপ লোড হচ্ছে...</div>
         </div>
-        <div class="card"><h3>Friends List</h3><div id="friendList">Loading friends...</div></div>
-        <div class="card"><h3>Incoming Friend Requests</h3><div id="reqList">Loading requests...</div></div>
+
+        <div class="card">
+          <h3 style="color:var(--accent); font-size:15px; margin-bottom:10px;">👤 Friends (One-to-One Chat)</h3>
+          <div id="friendList">বন্ধুতালিকা লোড হচ্ছে...</div>
+        </div>
+
+        <div class="card">
+          <h3 style="color:var(--warning); font-size:14px; margin-bottom:10px;">📩 Received Friend Requests</h3>
+          <div id="reqList">কোনো রিকোয়েস্ট পেন্ডিং নেই</div>
+        </div>
+
       </div>
     </div>
   `;
-  loadFriends(); loadRequests(); loadGroupChats();
+  loadFriendsAndListenMessages();
+  loadGroupChatsEngine();
+  loadIncomingRequests();
+  listenCOChatBadge();
 }
 
-function loadFriends(){
-  onValue(ref(db, 'friends/' + currentUser.serial), async snap=>{
-    let html = ''; 
-    if(snap.exists()){ 
-      const customNamesSnap = await get(ref(db, `custom_nicknames/${currentUser.serial}`));
-      const customNames = customNamesSnap.exists() ? customNamesSnap.val() : {};
-
-      for(let fid of Object.keys(snap.val())) {
-        const uSnap = await get(ref(db, 'users/' + fid));
-        if(!uSnap.exists()) continue; 
-        const baseName = uSnap.val().name;
-        const displayName = customNames[fid] || baseName;
-
-        html += `<div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-          <div onclick="openChat('${fid}', '${baseName}')" style="cursor:pointer; flex:1;">
-            👤 <b>${displayName}</b> <small style="color:var(--muted)">(${fid})</small>
-          </div>
-          <div style="display:flex; gap:4px;">
-            <button class="btn btn-secondary" style="width:auto; margin:0; padding:4px 8px; font-size:11px;" onclick="assignCustomFriendName('${fid}', '${baseName}')">Rename</button>
-            <button class="btn btn-warning" style="width:auto; margin:0; padding:4px 8px; font-size:11px;" onclick="openMultiplayerGamesMenu('${fid}','${baseName}')">🎮 Play</button>
-          </div>
-        </div>`;
-      }
-    } else html = '<div style="color:var(--muted); font-size:13px">কোনো বন্ধু তালিকাভুক্ত নেই।</div>';
-    if($('friendList')) $('friendList').innerHTML = html;
-  });
-}
-
-window.assignCustomFriendName = async function(fid, baseName) {
-  const customName = prompt(`"${baseName}" এর জন্য একটি নিজস্ব ডাকনাম (Custom Name) দাও:`);
-  if(customName === null) return;
-  await set(ref(db, `custom_nicknames/${currentUser.serial}/${fid}`), customName.trim() || baseName);
-  toast('ডাকনাম সফলভাবে সংরক্ষিত!');
-  loadFriends();
-}
-
-function loadRequests(){
-  onValue(ref(db, 'requests/' + currentUser.serial), async snap=>{
-    let html = ''; 
-    if(snap.exists()){ 
-      for(let from of Object.keys(snap.val())) {
-        const uSnap = await get(ref(db, 'users/' + from));
-        if(!uSnap.exists()) continue;
-        html += `<div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-          <div><b>${uSnap.val().name}</b> <small>(${from})</small></div>
-          <button class="btn btn-success" style="width:auto;padding:6px 12px; margin:0; font-size:12px;" onclick="acceptReq('${from}')">Accept Request</button>
-        </div>`;
-      }
-    } else html = '<div style="color:var(--muted); font-size:13px">কোনো ফ্রেন্ড রিকোয়েস্ট নেই।</div>';
-    if($('reqList')) $('reqList').innerHTML = html;
-  });
-}
-
-function loadGroupChats(){
-  onValue(ref(db, 'groups'), snap => {
-    let html = '';
-    if(snap.exists()){
-      Object.entries(snap.val()).forEach(([groupId, gData]) => {
-        if(gData.members && gData.members[currentUser.serial]) {
-          html += `
-            <div class="card" style="background:#f9f9f9; display:flex; justify-content:space-between; align-items:center;">
-              <div onclick="openGroupChat('${groupId}', '${gData.name}')" style="cursor:pointer; flex:1;">
-                <strong style="color:#1a1a1a;">💬 ${gData.name}</strong>
-              </div>
-              ${gData.creator === currentUser.serial || (gData.coleaders && gData.coleaders[currentUser.serial]) || currentUser.isCO ? 
-                `<button class="btn btn-danger" style="width:auto; margin:0; padding:4px 8px; font-size:11px;" onclick="deleteGroupEngine('${groupId}')">Delete Group</button>` : ''
-              }
-            </div>
-          `;
-        }
-      });
-    }
-    if(!html) html = '<div style="color:var(--muted); font-size:13px">তুমি কোনো গ্রুপে যুক্ত নও।</div>';
-    if($('groupChatList')) $('groupChatList').innerHTML = html;
-  });
-}
-
-window.deleteGroupEngine = async function(groupId) {
-  if(confirm("তুমি কি নিশ্চিতভাবে সম্পূর্ণ গ্রুপটি সার্ভার ডাটাবেস থেকে মুছে ফেলতে চাও?")) {
-    await remove(ref(db, 'groups/' + groupId));
-    await remove(ref(db, 'group_chats/' + groupId));
-    toast('গ্রুপটি চিরতরে মুছে ফেলা হয়েছে!');
-    loadGroupChats();
+window.renameFriendNickName = function(fid) {
+  const currentNick = localStorage.getItem(`nick_${currentUser.serial}_${fid}`) || "";
+  const newNick = prompt("এই বন্ধুর জন্য একটি কাস্টম নাম দিন (এটি শুধু আপনিই দেখতে পাবেন):", currentNick);
+  if (newNick !== null) {
+    localStorage.setItem(`nick_${currentUser.serial}_${fid}`, newNick.trim());
+    toast('বন্ধুর ডাকনাম সেভ হয়েছে!'); showContact();
   }
 }
 
-window.showFindUser = function(){
-  if(currentUser?.isBlocked) return renderBlockedScreen();
+function loadFriendsAndListenMessages() {
+  onValue(ref(db, 'friends/' + currentUser.serial), async snap => {
+    const listDiv = $('friendList'); if(!listDiv) return;
+    if(!snap.exists()) { listDiv.innerHTML = '<div style="color:var(--muted); font-size:13px">কোনো বন্ধু তালিকাভুক্ত নেই।</div>'; return; }
+
+    let friendArray = [];
+    const friendKeys = Object.keys(snap.val());
+
+    for(let fid of friendKeys) {
+      const uSnap = await get(ref(db, 'users/' + fid));
+      if(!uSnap.exists()) continue;
+      
+      const officialName = uSnap.val().name;
+      const customNick = localStorage.getItem(`nick_${currentUser.serial}_${fid}`);
+      const displayName = customNick ? `${customNick} (${officialName})` : officialName;
+      
+      const chatId = [currentUser.serial, fid].sort().join('_');
+      const chatSnap = await get(ref(db, 'chats/' + chatId));
+      
+      let lastMsgTime = 0;
+      let lastMsgText = "কোনো বার্তা নেই";
+      let hasNewMsg = false;
+
+      if(chatSnap.exists()) {
+        const msgs = Object.values(chatSnap.val());
+        if(msgs.length > 0) {
+          const lastNode = msgs[msgs.length - 1];
+          lastMsgTime = lastNode.time || 0;
+          lastMsgText = lastNode.text;
+          if(lastNode.from !== currentUser.serial) {
+            hasNewMsg = true;
+          }
+        }
+      }
+
+      friendArray.push({ fid, displayName, lastMsgTime, lastMsgText, hasNewMsg });
+    }
+
+    friendArray.sort((a, b) => b.lastMsgTime - a.lastMsgTime);
+
+    let html = '';
+    friendArray.forEach(f => {
+      html += `
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; background:#fafafa; margin-bottom:8px; padding:10px;">
+          <div onclick="openChat('${f.fid}', '${f.displayName}')" style="cursor:pointer; flex:1;">
+            <div style="display:flex; align-items:center;">
+              ${f.hasNewMsg ? '<span class="green-dot"></span>' : ''}
+              <strong>${f.displayName}</strong>
+              ${f.hasNewMsg ? '<span class="new-text-badge">New</span>' : ''}
+            </div>
+            <div style="font-size:12px; color:var(--muted); margin-top:2px; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${f.lastMsgText}</div>
+          </div>
+          <button class="btn btn-secondary" style="width:auto; margin:0; padding:4px 8px; font-size:11px;" onclick="renameFriendNickName('${f.fid}')">✏️ Nickname</button>
+        </div>
+      `;
+    });
+    listDiv.innerHTML = html;
+  });
+}
+
+function loadGroupChatsEngine() {
+  onValue(ref(db, 'groups'), async snap => {
+    const gDiv = $('groupChatList'); if(!gDiv) return;
+    if(!snap.exists()) { gDiv.innerHTML = '<div style="color:var(--muted); font-size:13px">কোনো গ্রুপ চ্যাট উপলব্ধ নেই।</div>'; return; }
+
+    let groupArray = [];
+
+    for (let [groupId, gData] of Object.entries(snap.val())) {
+      if(gData.members && gData.members[currentUser.serial]) {
+        const chatSnap = await get(ref(db, 'group_chats/' + groupId));
+        let lastTime = 0;
+        let lastText = "কোনো গ্রুপ বার্তা নেই";
+        if(chatSnap.exists()){
+          const msgs = Object.values(chatSnap.val());
+          if(msgs.length > 0) {
+            lastTime = msgs[msgs.length - 1].time || 0;
+            lastText = `${msgs[msgs.length - 1].senderName}: ${msgs[msgs.length - 1].text}`;
+          }
+        }
+        groupArray.push({ groupId, gData, lastTime, lastText });
+      }
+    }
+
+    groupArray.sort((a,b) => b.lastTime - a.lastTime);
+
+    let html = '';
+    groupArray.forEach(item => {
+      const isLeader = item.gData.creator === currentUser.serial;
+      const isCoLeader = item.gData.coleaders && item.gData.coleaders[currentUser.serial];
+      let roleText = "Member";
+      if(isLeader) roleText = "👑 Leader";
+      else if(isCoLeader) roleText = "🎖️ Co-Leader";
+
+      html += `
+        <div class="card" style="background:#fcfcfc; padding:10px;">
+          <div onclick="openGroupChat('${item.groupId}', '${item.gData.name}')" style="cursor:pointer;">
+            <div style="display:flex; justify-content:space-between;">
+              <strong>💬 ${item.gData.name}</strong>
+              <span style="font-size:11px; color:var(--accent); font-weight:bold;">${roleText}</span>
+            </div>
+            <div style="font-size:12px; color:var(--muted); margin-top:2px;">${item.lastText}</div>
+          </div>
+          <div class="flex-actions" style="margin-top:6px;">
+            ${isLeader || isCoLeader ? `<button class="btn btn-success" style="padding:4px; font-size:11px;" onclick="manageGroupMembersScreen('${item.groupId}')">Manage Members</button>` : ''}
+            ${isLeader ? `<button class="btn btn-danger" style="padding:4px; font-size:11px;" onclick="deleteGroupEntirely('${item.groupId}')">Delete Group</button>` : ''}
+          </div>
+        </div>
+      `;
+    });
+    gDiv.innerHTML = html || '<div style="color:var(--muted); font-size:13px">তুমি কোনো গ্রুপে যুক্ত নও।</div>';
+  });
+}
+
+window.deleteGroupEntirely = function(groupId) {
+  if(confirm('⚠️ তুমি কি নিশ্চিত যে গ্রুপটি সম্পূর্ণ ডিলিট করতে চাও? ফায়ারবেসে এর কোনো অস্তিত্ব থাকবে না!')) {
+    remove(ref(db, 'groups/' + groupId));
+    remove(ref(db, 'group_chats/' + groupId));
+    toast('গ্রুপটি চিরতরে মুছে ফেলা হয়েছে!');
+  }
+}
+
+window.manageGroupMembersScreen = async function(groupId) {
+  const gSnap = await get(ref(db, 'groups/' + groupId)); if(!gSnap.exists()) return;
+  const gData = gSnap.val();
+  const fSnap = await get(ref(db, 'friends/' + currentUser.serial));
+  
+  let html = `<h3>Manage: ${gData.name}</h3><br>`;
+  
+  if(fSnap.exists()) {
+    html += '<h4>Add Friends to Group:</h4>';
+    for(let fid of Object.keys(fSnap.val())) {
+      if(gData.members && gData.members[fid]) continue; 
+      const uSnap = await get(ref(db, 'users/' + fid));
+      html += `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin:6px 0;">
+          <span>${uSnap.val().name}</span>
+          <button class="btn btn-success" style="width:auto; padding:4px 8px; font-size:11px; margin:0;" onclick="executeAddGroupMember('${groupId}','${fid}')">Add</button>
+        </div>
+      `;
+    }
+  }
+
+  if(gData.creator === currentUser.serial) {
+    html += '<hr style="margin:10px 0;"><h4 style="margin-top:10px;">Promote Co-Leader:</h4>';
+    for(let mid of Object.keys(gData.members)) {
+      if(mid === currentUser.serial) continue;
+      if(gData.coleaders && gData.coleaders[mid]) continue;
+      const uSnap = await get(ref(db, 'users/' + mid));
+      html += `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin:6px 0;">
+          <span>${uSnap.val().name}</span>
+          <button class="btn btn-warning" style="width:auto; padding:4px 8px; font-size:11px; margin:0;" onclick="executePromoteCoLeader('${groupId}','${mid}')">Make Co-Leader</button>
+        </div>
+      `;
+    }
+  }
+
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Find Friends</span></header>
-      <div class="main-content">
-        <input class="input" id="findSerial" placeholder="সিরিয়াল নাম্বার বা নাম দিয়ে খুঁজুন..." oninput="filterFriendsList()">
-        <div id="allUsersList" style="margin-top:15px;">Loading Member Directory...</div>
-      </div>
+      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Group Control Panel</span></header>
+      <div class="main-content"><div class="card">${html}</div></div>
     </div>
   `;
-  loadAllUsersForFriends();
 }
 
-async function loadAllUsersForFriends() {
-  const snap = await get(ref(db, 'users'));
-  window.allUsersCache = snap.exists() ? snap.val() : {};
-  filterFriendsList();
+window.executeAddGroupMember = async function(groupId, fid) {
+  await set(ref(db, `groups/${groupId}/members/${fid}`), true);
+  toast('মেম্বার যুক্ত করা হয়েছে!'); manageGroupMembersScreen(groupId);
 }
 
-window.filterFriendsList = function() {
-  const queryText = $('findSerial').value.trim().toLowerCase();
-  let html = '';
-  Object.entries(window.allUsersCache || {}).forEach(([serial, u]) => {
-    if(serial === currentUser.serial || u.isBlocked) return;
-    if(queryText && !u.name.toLowerCase().includes(queryText) && !serial.toLowerCase().includes(queryText)) return;
-    html += `<div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-      <div><strong>${u.name}</strong><br><small>${serial}</small></div>
-      <button class="btn" style="width:auto; padding:6px 12px; margin:0;" onclick="sendFriendReq('${serial}')">Send Request</button>
-    </div>`;
-  });
-  $('allUsersList').innerHTML = html || '<div class="card">কোনো মেম্বার পাওয়া যায়নি।</div>';
-}
-
-window.sendFriendReq = async function(targetSerial){
-  await set(ref(db, 'requests/' + targetSerial + '/' + currentUser.serial), 'pending'); 
-  toast('ফ্রেন্ড রিকোয়েস্ট পাঠানো হয়েছে!');
-}
-
-window.acceptReq = async function(from){
-  await set(ref(db, 'friends/' + currentUser.serial + '/' + from), true);
-  await set(ref(db, 'friends/' + from + '/' + currentUser.serial), true);
-  await remove(ref(db, 'requests/' + currentUser.serial + '/' + from)); 
-  toast('রিকোয়েস্ট গ্রহণ করা হয়েছে!'); showContact();
+window.executePromoteCoLeader = async function(groupId, mid) {
+  await set(ref(db, `groups/${groupId}/coleaders/${mid}`), true);
+  toast('কো-লিডার বানানো সফল হয়েছে!'); manageGroupMembersScreen(groupId);
 }
 
 window.showCreateGroupScreen = async function(){
@@ -1082,14 +760,13 @@ window.showCreateGroupScreen = async function(){
   if(fSnap.exists()){
     for(let fid of Object.keys(fSnap.val())) {
       const uSnap = await get(ref(db, 'users/' + fid));
-      if(!uSnap.exists()) continue;
-      friendsHTML += `<div style="margin:8px 0;"><input type="checkbox" class="group-member-checkbox" value="${fid}" id="chk_${fid}"> <label for="chk_${fid}">${uSnap.val().name} (${fid})</label></div>`;
+      friendsHTML += `<div style="margin:8px 0;"><input type="checkbox" class="group-member-checkbox" value="${fid}" id="chk_${fid}"> <label for="chk_${fid}">${uSnap.val().name}</label></div>`;
     }
   }
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Create Group</span></header>
-      <div class="main-content"><div class="card"><input class="input" id="newGroupName" placeholder="গ্রুপের সুন্দর একটি নাম দাও...">${friendsHTML}<button class="btn" onclick="submitCreateGroup()">Create New Group</button></div></div>
+      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Cancel</button><span>New Group Setup</span></header>
+      <div class="main-content"><div class="card"><input class="input" id="newGroupName" placeholder="গ্রুপের সুন্দর নাম দিন">${friendsHTML}<button class="btn" onclick="submitCreateGroup()">Launch Group</button></div></div>
     </div>
   `;
 }
@@ -1103,12 +780,87 @@ window.submitCreateGroup = async function(){
   toast('গ্রুপ তৈরি হয়েছে!'); showContact();
 }
 
+window.showFindUser = function(){
+  if(currentUser?.isBlocked) return renderBlockedScreen();
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Find Friends Directory</span></header>
+      <div class="main-content">
+        <input class="input" id="findSearchInput" placeholder="এখানে নাম বা সিরিয়াল নাম্বার সার্চ করো..." oninput="filterGlobalUsersSearch()">
+        <div id="allUsersList" style="margin-top:15px;">মেম্বার ডাটাবেস খোঁজা হচ্ছে...</div>
+      </div>
+    </div>
+  `;
+  loadGlobalUsersCache();
+}
+
+async function loadGlobalUsersCache() {
+  const snap = await get(ref(db, 'users'));
+  window.globalUsersMap = snap.exists() ? snap.val() : {};
+  filterGlobalUsersSearch();
+}
+
+window.filterGlobalUsersSearch = async function() {
+  const queryText = $('findSearchInput').value.trim().toLowerCase();
+  const listDiv = $('allUsersList'); if(!listDiv) return;
+  
+  const friendsSnap = await get(ref(db, 'friends/' + currentUser.serial));
+  const myFriends = friendsSnap.exists() ? friendsSnap.val() : {};
+
+  let html = '';
+  Object.entries(window.globalUsersMap || {}).forEach(([serial, u]) => {
+    if(serial === currentUser.serial || u.isBlocked) return;
+    if(myFriends[serial]) return; 
+    
+    if(queryText && !u.name.toLowerCase().includes(queryText) && !serial.toLowerCase().includes(queryText)) return;
+    
+    html += `
+      <div class="card" style="display:flex; justify-content:space-between; align-items:center; background:var(--card);">
+        <div><strong>${u.name}</strong><br><small style="color:var(--accent); font-weight:bold;">ID: ${serial}</small></div>
+        <button class="btn btn-success" style="width:auto; padding:6px 12px; margin:0;" onclick="sendFriendReq('${serial}','${u.name}')">Add Request</button>
+      </div>
+    `;
+  });
+  listDiv.innerHTML = html || '<div class="card">কোনো মেম্বার ম্যাচ করেনি বা সবাই অলরেডি বন্ধু!</div>';
+}
+
+window.sendFriendReq = async function(targetSerial, name){
+  await set(ref(db, 'requests/' + targetSerial + '/' + currentUser.serial), 'pending'); 
+  toast(`${name}-কে ফ্রেন্ড রিকোয়েস্ট পাঠানো হয়েছে!`);
+}
+
+function loadIncomingRequests(){
+  onValue(ref(db, 'requests/' + currentUser.serial), async snap=>{
+    let html = ''; 
+    if(snap.exists()){ 
+      for(let from of Object.keys(snap.val())) {
+        const uSnap = await get(ref(db, 'users/' + from));
+        if(!uSnap.exists()) continue;
+        html += `
+          <div class="card" style="display:flex; justify-content:space-between; align-items:center; background:#fffdeb;">
+            <div><b>${uSnap.val().name}</b> <small>(${from})</small></div>
+            <button class="btn btn-success" style="width:auto;padding:6px 12px; margin:0; font-size:12px;" onclick="acceptReq('${from}')">Accept</button>
+          </div>
+        `;
+      }
+    } else html = '<div style="color:var(--muted); font-size:12px">কোনো পেন্ডিং রিকোয়েস্ট নেই।</div>';
+    if($('reqList')) $('reqList').innerHTML = html;
+  });
+}
+
+window.acceptReq = async function(from){
+  await set(ref(db, 'friends/' + currentUser.serial + '/' + from), true);
+  await set(ref(db, 'friends/' + from + '/' + currentUser.serial), true);
+  await remove(ref(db, 'requests/' + currentUser.serial + '/' + from)); 
+  toast('রিকোয়েস্ট এক্সেপ্টেড!'); showContact();
+}
+
 window.openChat = function(fid, friendName){
   const chatId = [currentUser.serial, fid].sort().join('_');
   $('app').innerHTML = `
     <div class="screen active">
       <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>${friendName}</span></header>
-      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;"></div>
+      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;" class="allow-copy"></div>
       <div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border)">
         <input class="input" id="chatInput" placeholder="বার্তা লেখো..." style="margin:0">
         <button class="btn" onclick="sendMsg('${chatId}')" style="width:auto;margin:0;">Send</button>
@@ -1116,93 +868,48 @@ window.openChat = function(fid, friendName){
     </div>
   `;
   onValue(ref(db, 'chats/' + chatId), snap=>{
-    let html = ''; if(snap.exists()){ 
-      let msgs = Object.values(snap.val());
-      msgs.forEach(m=>{ let isMe = m.from === currentUser.serial; html += `<div style="text-align:${isMe?'right':'left'};margin:8px"><span><b>${isMe?'তুমি':friendName}:</b> ${m.text}</span></div>`; }); 
-    }
+    let html = ''; if(snap.exists()){ Object.values(snap.val()).forEach(m=>{ let isMe = m.from === currentUser.serial; html += `<div style="text-align:${isMe?'right':'left'};margin:8px"><span><b>${isMe?'তুমি':friendName}:</b> ${m.text}</span></div>`; }); }
     if($('chatBox')){ $('chatBox').innerHTML = html; $('chatBox').scrollTop = $('chatBox').scrollHeight; }
   });
 }
-
 window.sendMsg = async function(chatId){
   const txt = $('chatInput').value.trim(); if(!txt) return;
   await push(ref(db, 'chats/' + chatId), { from: currentUser.serial, text: txt, time: Date.now() });
-  await set(ref(db, 'indicators/chats'), { timestamp: Date.now() });
+  triggerLocalNotification("নতুন ফ্রেন্ড মেসেজ 💬", txt);
   $('chatInput').value = '';
 }
 
-window.openGroupChat = async function(groupId, groupName){
-  const gSnap = await get(ref(db, 'groups/' + groupId));
-  const gData = gSnap.val();
-  const isLeader = gData.creator === currentUser.serial;
-  const isCoLeader = gData.coleaders && gData.coleaders[currentUser.serial];
-
-  let managementHTML = '';
-  if(isLeader || isCoLeader) {
-    managementHTML = `
-      <div class="card" style="background:var(--bg); border-color:var(--accent); margin-bottom:8px; padding:10px;">
-        <h4 style="font-size:12px; margin-bottom:4px;">Group Management Panel</h4>
-        <div style="display:flex; gap:4px;">
-          <input class="input" id="grpTargetUser" placeholder="সদস্যের সিরিয়াল YC_XXXXXX" style="margin:0; padding:6px; font-size:12px;">
-          <button class="btn btn-success" style="width:auto; margin:0; padding:4px 8px; font-size:11px;" onclick="groupAddMemberEngine('${groupId}')">Add Member</button>
-          ${isLeader ? `<button class="btn btn-warning" style="width:auto; margin:0; padding:4px 8px; font-size:11px;" onclick="groupPromoteCoLeaderEngine('${groupId}')">Make Co-Leader</button>` : ''}
-        </div>
-      </div>
-    `;
-  }
-
+window.openGroupChat = function(groupId, groupName){
   $('app').innerHTML = `
     <div class="screen active">
       <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>${groupName}</span></header>
-      <div class="main-content">
-        ${managementHTML}
-        <div id="chatBox" style="height:calc(100vh - 230px);overflow-y:auto; margin-bottom:60px;"></div>
-      </div>
-      <div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border);z-index:100;">
-        <input class="input" id="groupChatInput" placeholder="গ্রুপে বার্তা পাঠান..." style="margin:0">
+      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;" class="allow-copy"></div>
+      <div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border)">
+        <input class="input" id="groupChatInput" placeholder="গ্রুপে কিছু লেখো..." style="margin:0">
         <button class="btn btn-success" onclick="sendGroupMsg('${groupId}')" style="width:auto;margin:0;">Send</button>
       </div>
     </div>
   `;
-  
   onValue(ref(db, 'group_chats/' + groupId), snap=>{
     let html = ''; if(snap.exists()){ Object.values(snap.val()).forEach(m => { let isMe = m.from === currentUser.serial; html += `<div style="text-align:${isMe?'right':'left'};margin:8px"><b>${m.senderName}:</b> ${m.text}</div>`; }); }
     if($('chatBox')){ $('chatBox').innerHTML = html; $('chatBox').scrollTop = $('chatBox').scrollHeight; }
   });
 }
-
-window.groupAddMemberEngine = async function(groupId) {
-  const target = $('grpTargetUser').value.trim();
-  if(!target) return toast('সিরিয়াল নাম্বার দিন!');
-  const checkUser = await get(ref(db, 'users/' + target));
-  if(!checkUser.exists()) return toast('মেম্বার খুঁজে পাওয়া যায়নি!');
-  
-  await set(ref(db, `groups/${groupId}/members/${target}`), true);
-  toast('সদস্যকে গ্রুপে যুক্ত করা হয়েছে!');
-}
-
-window.groupPromoteCoLeaderEngine = async function(groupId) {
-  const target = $('grpTargetUser').value.trim();
-  if(!target) return toast('সিরিয়াল নাম্বার দিন!');
-  await set(ref(db, `groups/${groupId}/coleaders/${target}`), true);
-  toast('মেম্বারকে সহ-নেতা (Co-Leader) বানানো হয়েছে!');
-}
-
 window.sendGroupMsg = async function(groupId){
   const txt = $('groupChatInput').value.trim(); if(!txt) return;
   await push(ref(db, 'group_chats/' + groupId), { from: currentUser.serial, senderName: currentUser.name, text: txt, time: Date.now() });
-  await set(ref(db, 'indicators/group_chats'), { timestamp: Date.now() });
+  triggerLocalNotification("গ্রুপ চ্যাট মেসেজ 👥", txt);
   $('groupChatInput').value = '';
 }
 
 window.openCOChat = function(){
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Contact Chief Officer</span></header>
-      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;"></div>
+      <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>CO Support Desk</span></header>
+      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto" class="allow-copy"></div>
       <div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border)">
-        <input class="input" id="coChatInput" placeholder="সিও-কে মেসেজ লেখো..." style="margin:0">
-        <button class="btn" onclick="sendMsgToCO()" style="width:auto;margin:0">Send</button>
+        <input class="input" id="coChatInput" placeholder="সিও প্যানেলে মেসেজ লিখুন..." style="margin:0">
+        <button class="btn btn-danger" onclick="sendMsgToCO()" style="width:auto;margin:0">Send</button>
       </div>
     </div>
   `;
@@ -1211,335 +918,451 @@ window.openCOChat = function(){
     if($('chatBox')){ $('chatBox').innerHTML = html; $('chatBox').scrollTop = $('chatBox').scrollHeight; }
   });
 }
-
 window.sendMsgToCO = async function(){
   const txt = $('coChatInput').value.trim(); if(!txt) return;
   await push(ref(db, 'co_messages/' + currentUser.serial), { sender: currentUser.serial, text: txt, time: Date.now(), userName: currentUser.name });
-  await set(ref(db, 'indicators/co_messages'), { timestamp: Date.now() });
   $('coChatInput').value = '';
 }
 
-window.showBattle = function(){
+function listenCOChatBadge() {
+  onValue(ref(db, 'co_messages/' + currentUser.serial), snap => {
+    if(snap.exists() && $('co_chat_dot')) {
+      const msgs = Object.values(snap.val());
+      if(msgs.length > 0 && msgs[msgs.length - 1].sender === 'CO_PANEL') {
+        $('co_chat_dot').style.display = 'inline-block';
+        $('co_new_badge').innerHTML = '<span class="new-text-badge">New</span>';
+      }
+    }
+  });
+}
+
+window.showBattleStreamPortal = function() {
   if(currentUser?.isBlocked) return renderBlockedScreen();
-  markSectionAsSeen('live_battles');
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Live Battle Selection</span></header>
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Home</button><span>Live Battle Arena</span></header>
       <div class="main-content">
-        <div class="card" style="text-align:center; padding:20px; border-left:5px solid var(--accent2);">
-          <h3>Battle Option Modes</h3>
-          <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">নিচের মোডগুলোর মধ্যে যেকোনো একটি নির্বাচন করো</p>
-          <button class="btn" onclick="launchStandardPlayersBattle()">1. Players Battle Mode</button>
-          <button class="btn btn-danger" onclick="launchMCQFightStreamWindow()">2. MCQ Fight Arena (Live Battle Exam)</button>
+        <div class="card" style="text-align:center; background:#fff2f2; border:1px solid var(--accent2);">
+          <h3 style="color:var(--accent2); font-size:16px;">⚔️ Battle Mode Selection</h3>
+          <p style="font-size:12px; color:var(--muted); margin-top:4px;">নিচের যেকোনো একটি লাইভ ফাইট অপশন বেছে নাও</p>
         </div>
+        
+        <button class="btn btn-danger" style="padding:16px; font-weight:bold; margin-top:15px;" onclick="showPlayersBattleStream()">1. Players Battle (মেগা এক্সাম স্ট্রিম)</button>
+        
+        <button class="btn btn-warning" style="padding:16px; font-weight:bold; margin-top:12px;" onclick="showMCQFightArenaScreen()">2. MCQ Fight (15 Sec / Quest Challenge)</button>
+        
+        <button class="btn btn-secondary" style="margin-top:12px;" onclick="renderHome()">3. Return to Main Menu</button>
       </div>
     </div>
   `;
 }
 
-window.launchStandardPlayersBattle = function() {
-  alert("Standard Players Battle Game Engine Initialized! Connecting to opponents...");
-}
-
-window.launchMCQFightStreamWindow = function() {
+window.showPlayersBattleStream = function() {
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="showBattle()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>MCQ Fight - Live Battles</span></header>
-      <div class="main-content" id="battleList">Loading Active Battle Stream...</div>
+      <header><button onclick="showBattleStreamPortal()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Mega Players Battle</span></header>
+      <div class="main-content" id="playersBattleList">লোডিং অ্যাক্টিভ ব্যাটলস...</div>
     </div>
   `;
-  
   onValue(ref(db, 'battles'), snap => {
     let html = '';
     if(snap.exists()){
-      Object.entries(snap.val()).forEach(([battleId, b]) => {
-        const remainingMs = b.endTimestamp - Date.now();
-        if(remainingMs <= 0) return; 
-        
-        let remTimeStr = "Expired";
-        if(remainingMs > 0) {
-          const totalSecs = Math.floor(remainingMs / 1000);
-          const hrs = Math.floor(totalSecs / 3600);
-          const mins = Math.floor((totalSecs % 3600) / 60);
-          const secs = totalSecs % 60;
-          remTimeStr = `${hrs} ঘণ্টা ${mins} মিনিট ${secs} সেকেন্ড`;
-        }
-        
+      Object.entries(snap.val()).forEach(([bId, b]) => {
+        if(b.endTimestamp - Date.now() <= 0) return;
         html += `
-          <div class="card" style="border-top: 4px solid var(--accent2); background:var(--card);">
-            <h3 style="color:var(--accent2)">⚔️ ${b.title}</h3>
-            <p style="font-size:12px; margin:4px 0; color:var(--warning);">⏰ বাকি সময়: <b>${remTimeStr}</b></p>
-            <hr style="border-color:var(--border); margin:8px 0;">
-            <button class="btn btn-danger" onclick="enterMCQFightActiveSession('${battleId}')">Start MCQ Fight Challenge</button>
-            ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('battles/${battleId}', 'লাইভ ব্যাটল সেট')">Delete</button>` : ''}
+          <div class="card" style="border-left: 5px solid var(--accent2);">
+            <h3>⚔️ ${b.title}</h3>
+            <button class="btn btn-danger" onclick="enterLiveBattleSession('${bId}')">পরীক্ষায় অংশগ্রহণ করো</button>
           </div>
         `;
       });
     }
-    if(!html) html = '<div class="card">CO প্যানেল থেকে বর্তমানে কোনো MCQ চ্যালেন্জ লাইভ বা সক্রিয় নেই।</div>';
-    if($('battleList')) $('battleList').innerHTML = html;
+    $('playersBattleList').innerHTML = html || '<div class="card">বর্তমানে কোনো মেগা প্লেয়ার্স ব্যাটল পরীক্ষা সেশন লাইভ নেই।</div>';
   });
 }
 
-window.enterMCQFightActiveSession = async function(battleId) {
-  const snap = await get(ref(db, 'battles/' + battleId));
-  if(!snap.exists()) return toast('ব্যাটেল সেশনটি খুঁজে পাওয়া যায়নি!');
+window.enterLiveBattleSession = async function(battleId) {
+  const snap = await get(ref(db, 'battles/' + battleId)); if(!snap.exists()) return;
   const b = snap.val();
   
   const checkAns = await get(ref(db, `battle_submissions/${battleId}/${currentUser.serial}`));
-  if(checkAns.exists()){
-    alert('⚠️ তুমি ইতিমধ্যে এই MCQ Fight চ্যালেন্জে অংশগ্রহণ করেছো!');
-    launchMCQFightStreamWindow(); return;
-  }
+  if(checkAns.exists()){ alert('তুমি ইতিমধ্যে এই লাইভ ব্যাটল এক্সামে খাতা জমা দিয়েছো!'); showPlayersBattleStream(); return; }
 
-  window.activeBattleId = battleId;
-  window.activeBattleQuestions = b.questions || [];
-  window.activeBattleCurrentIndex = 0;
-  window.activeBattleScoresEarned = 0;
-  window.battleTimerInterval = null;
-  window.battleSubmissionDetails = {};
+  let questionsHTML = '';
+  b.questions.forEach((q, index) => {
+    let inputs = '';
+    if(q.type === 'mcq') {
+      q.options.forEach(opt => {
+        inputs += `<label style="display:block; margin:6px 0;"><input type="radio" name="battle_q_${index}" value="${opt.trim()}"> ${opt.trim()}</label>`;
+      });
+    } else {
+      inputs = `<input type="text" class="input battle-vsaq-input" data-idx="${index}" placeholder="উত্তর টাইপ করো...">`;
+    }
+    questionsHTML += `<div class="battle-q-card"><strong>Q ${index + 1}: ${q.question}</strong><div style="margin-top:8px;">${inputs}</div></div>`;
+  });
 
-  runMCQQuestionStepper();
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><span>🔴 Live Exam Room</span></header>
+      <div class="main-content">${questionsHTML}<button class="btn btn-danger" onclick="submitBattleExamPaper('${battleId}')">Submit Exam Paper</button></div>
+    </div>
+  `;
 }
 
-function runMCQQuestionStepper() {
-  if(window.battleTimerInterval) clearInterval(window.battleTimerInterval);
+window.submitBattleExamPaper = async function(battleId) {
+  const snap = await get(ref(db, 'battles/' + battleId)); if(!snap.exists()) return;
+  const b = snap.val();
+  const uSnap = await get(ref(db, 'users/' + currentUser.serial));
+  
+  let totalAwarded = 0;
+  b.questions.forEach((q, index) => {
+    let userAns = "";
+    if(q.type === 'mcq') {
+      const radio = document.querySelector(`input[name="battle_q_${index}"]:checked`);
+      if(radio) userAns = radio.value;
+    } else {
+      const txtInp = document.querySelector(`.battle-vsaq-input[data-idx="${index}"]`);
+      if(txtInp) userAns = txtInp.value.trim();
+    }
+    let isCorrect = q.type === 'mcq' ? (userAns.toLowerCase().trim() === q.answer.toLowerCase().trim()) : checkAnswerSmart(userAns, q.answer);
+    if(userAns !== "") totalAwarded += isCorrect ? parseInt(q.points) : -parseInt(q.negative);
+  });
 
-  if(window.activeBattleCurrentIndex >= window.activeBattleQuestions.length) {
-    finalizeAndUploadMCQFightResults();
-    return;
+  await set(ref(db, `battle_submissions/${battleId}/${currentUser.serial}`), { student: currentUser.name, score: totalAwarded });
+  await update(ref(db, 'users/' + currentUser.serial), { score: (uSnap.val().score || 0) + totalAwarded });
+  alert(`পরীক্ষা সাবমিট হয়েছে! স্কোর পরিবর্তন: ${totalAwarded}`);
+  showBattleStreamPortal();
+}
+
+window.showMCQFightArenaScreen = function() {
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showBattleStreamPortal()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>MCQ Fight Arena ⏱️</span></header>
+      <div class="main-content" id="mcqFightListArea">চলতি ফایت সেট খোঁজা হচ্ছে...</div>
+    </div>
+  `;
+  onValue(ref(db, 'mcq_fights'), snap => {
+    let html = '';
+    if(snap.exists()){
+      Object.entries(snap.val()).forEach(([fightId, fData]) => {
+        if(Date.now() > fData.expireTimestamp) return;
+        html += `
+          <div class="card" style="border-top:4px solid var(--warning); background:#fffdeb;">
+            <h4>🥊 ${fData.title}</h4>
+            <p style="font-size:12px; color:var(--muted); margin-top:2px;">মোট প্রশ্ন সংখ্যা: ${fData.questions ? fData.questions.length : 0} টি</p>
+            <button class="btn btn-warning" onclick="startMCQFightLiveLoop('${fightId}')">Start Fast Fight Game (15s/Q)</button>
+          </div>
+        `;
+      });
+    }
+    $('mcqFightListArea').innerHTML = html || '<div class="card">বর্তমানে সিও প্যানেল থেকে কোনো MCQ ফাইট দেওয়া হয়নি!</div>';
+  });
+}
+
+window.startMCQFightLiveLoop = async function(fightId) {
+  const snap = await get(ref(db, 'mcq_fights/' + fightId)); if(!snap.exists()) return;
+  const fightData = snap.val();
+  
+  const historySnap = await get(ref(db, `mcq_fight_attempts/${fightId}/${currentUser.serial}`));
+  if(historySnap.exists()) {
+    alert('⚠️ তুমি ইতিমধ্যে একবার এই MCQ ফাইটে অংশ নিয়েছ!');
+    showMCQFightArenaScreen(); return;
   }
 
-  const q = window.activeBattleQuestions[window.activeBattleCurrentIndex];
-  let inputsHTML = '';
+  window.mcqFightQuestions = fightData.questions || [];
+  window.currentFightIndex = 0;
+  window.fightScoreAccumulator = 0;
+  window.fightIntervalId = null;
   
-  if(q.type === 'mcq') {
-    q.options.forEach((opt, oIdx) => {
-      inputsHTML += `
-        <button class="btn btn-secondary" style="margin-top:6px; text-align:left;" onclick="submitMCQFightStepAnswer('${opt.trim()}')">${oIdx+1}. ${opt.trim()}</button>
-      `;
+  runSingleMCQFightQuestionStep(fightId);
+}
+
+function runSingleMCQFightQuestionStep(fightId) {
+  if(window.currentFightIndex >= window.mcqFightQuestions.length) {
+    terminateAndSaveMCQFightData(fightId); return;
+  }
+
+  clearInterval(window.fightIntervalId);
+  const qNode = window.mcqFightQuestions[window.currentFightIndex];
+  let timeLeft = 15;
+
+  let optionsHTML = '';
+  if(qNode.options) {
+    qNode.options.forEach(opt => {
+      optionsHTML += `<button class="mcq-option-btn" onclick="processMCQFightAnswerSelected('${fightId}', '${opt.trim()}', '${qNode.answer.trim()}')">${opt.trim()}</button>`;
     });
-  } else {
-    inputsHTML += `
-      <input type="text" class="input" id="vsaqBattleField" placeholder="উত্তর টাইপ করো...">
-      <button class="btn btn-success" onclick="submitMCQFightStepAnswer($('vsaqBattleField').value)">Submit Answer</button>
-    `;
   }
 
   $('app').innerHTML = `
     <div class="screen active">
-      <header><div class="header-top"><span style="font-weight:bold; color:var(--accent2);">🔴 MCQ Fight Challenge: ${window.activeBattleCurrentIndex+1}/${window.activeBattleQuestions.length}</span><span id="battleClock" style="font-weight:bold; background:var(--accent2); color:white; padding:2px 8px; border-radius:4px;">15s</span></div></header>
+      <header><div class="header-top"><span>⏱️ ফাস্ট ফাইট লুপ</span> <b style="color:var(--accent2); font-size:16px;" id="fightTimerDisplay">15s</b></div></header>
       <div class="main-content">
-        <div class="card" style="border-left:5px solid var(--accent2);">
-          <h3 style="margin-bottom:12px;">${q.question}</h3>
-          ${inputsHTML}
+        <div class="card">
+          <div style="font-size:11px; color:var(--muted)">Question ${window.currentFightIndex + 1} of ${window.mcqFightQuestions.length}</div>
+          <h3 style="margin:10px 0; line-height:1.4;">${qNode.question}</h3>
+          ${optionsHTML}
         </div>
       </div>
     </div>
   `;
 
-  let timeLeft = 15;
-  window.battleTimerInterval = setInterval(() => {
+  window.fightIntervalId = setInterval(() => {
     timeLeft--;
-    const clock = $('battleClock');
-    if(clock) clock.textContent = `${timeLeft}s`;
-    
+    if($('fightTimerDisplay')) $('fightTimerDisplay').textContent = `${timeLeft}s`;
     if(timeLeft <= 0) {
-      clearInterval(window.battleTimerInterval);
-      submitMCQFightStepAnswer(""); 
+      clearInterval(window.fightIntervalId);
+      toast('⌛ সময় শেষ! পরবর্তী প্রশ্ন আসছে...');
+      window.currentFightIndex++;
+      runSingleMCQFightQuestionStep(fightId);
     }
   }, 1000);
 }
 
-window.submitMCQFightStepAnswer = function(userAns) {
-  if(window.battleTimerInterval) clearInterval(window.battleTimerInterval);
-
-  const q = window.activeBattleQuestions[window.activeBattleCurrentIndex];
-  let isCorrect = false;
-
-  if(userAns !== "") {
-    if(q.type === 'mcq') {
-      isCorrect = (userAns.toLowerCase().trim() === q.answer.toLowerCase().trim());
-    } else {
-      isCorrect = checkAnswerSmart(userAns, q.answer);
-    }
+window.processMCQFightAnswerSelected = function(fightId, selectedOpt, correctOpt) {
+  clearInterval(window.fightIntervalId);
+  if(selectedOpt.toLowerCase().trim() === correctOpt.toLowerCase().trim()) {
+    window.fightScoreAccumulator += 10; toast('🎉 সঠিক উত্তর (+১০)!');
+  } else {
+    window.fightScoreAccumulator -= 2; toast('❌ ভুল উত্তর (-২)!');
   }
-
-  let pointsEarned = 0;
-  if(userAns !== "") {
-    pointsEarned = isCorrect ? parseInt(q.points) : -parseInt(q.negative);
-  }
-
-  window.activeBattleScoresEarned += pointsEarned;
-  window.battleSubmissionDetails[`q_${window.activeBattleCurrentIndex}`] = { userAns, isCorrect, pointsEarned };
-
-  window.activeBattleCurrentIndex++;
-  runMCQQuestionStepper();
+  setTimeout(() => {
+    window.currentFightIndex++;
+    runSingleMCQFightQuestionStep(fightId);
+  }, 800);
 }
 
-async function finalizeAndUploadMCQFightResults() {
-  const battleId = window.activeBattleId;
-  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
-  let currentTotalScore = uCheckSnap.val().score || 0;
-  
-  let finalScore = currentTotalScore + window.activeBattleScoresEarned;
-  if(finalScore < 0) finalScore = 0;
+async function terminateAndSaveMCQFightData(fightId) {
+  clearInterval(window.fightIntervalId);
+  const uSnap = await get(ref(db, 'users/' + currentUser.serial));
+  let oldScore = uSnap.val().score || 0;
+  let finalCalculated = oldScore + window.fightScoreAccumulator;
+  if(finalCalculated < 0) finalCalculated = 0;
 
-  await set(ref(db, `battle_submissions/${battleId}/${currentUser.serial}`), {
-    studentName: currentUser.name,
-    scoreAwarded: window.activeBattleScoresEarned,
-    details: window.battleSubmissionDetails,
-    timestamp: Date.now()
+  await set(ref(db, `mcq_fight_attempts/${fightId}/${currentUser.serial}`), { scoreEarned: window.fightScoreAccumulator, timestamp: Date.now() });
+  await update(ref(db, 'users/' + currentUser.serial), { score: finalCalculated });
+  
+  alert(`🏁 MCQ ফাইট শেষ!\n\nতোমার প্রাপ্ত নিট স্কোর: ${window.fightScoreAccumulator}`);
+  showMCQFightArenaScreen();
+}
+
+window.coAddLiveBattle = function() {
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Battle Creator</span></header>
+      <div class="main-content">
+        <div class="card">
+          <h3>১-ক্লিকে মেগা প্লেয়ার্স ব্যাটল তৈরি করো ⚔️</h3>
+          <input class="input" id="btMegaTitle" placeholder="ব্যাটেল শিরোনাম">
+          <input class="input" id="btMegaDuration" type="number" placeholder="সময়সীমা (মিনিট)">
+          <textarea class="input" id="btMegaRawString" rows="5" placeholder="mcq|প্রশ্ন|উত্তর|অপশন১,অপশন২|প্লাস|মাইনাস"></textarea>
+          <button class="btn btn-danger" onclick="publishMegaBattleExamEngine()">Publish Players Battle</button>
+        </div>
+
+        <div class="card" style="margin-top:15px; border-top:4px solid var(--warning);">
+          <h3>🥊 ক্রিয়েট লাইভ MCQ ফাইট (15s Challenge)</h3>
+          <input class="input" id="fcFightTitle" placeholder="ফাইটের শিরোনাম">
+          <input class="input" id="fcDurationHours" type="number" placeholder="কত ঘন্টা পর পর স্বয়ংক্রিয়ভাবে মুছে যাবে?">
+          <textarea class="input" id="fcRawQuestions" rows="8" placeholder="প্রশ্ন|সঠি উত্তর|অপশন১,অপশন২,অপশন৩,অপশন৪" style="font-family:monospace; font-size:12px;"></textarea>
+          <button class="btn btn-warning" onclick="publishCOPanelMCQFightEngine()">Publish Fast MCQ Fight Game</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+window.publishCOPanelMCQFightEngine = async function() {
+  const title = $('fcFightTitle').value.trim();
+  const hrs = parseInt($('fcDurationHours').value.trim());
+  const rawText = $('fcRawQuestions').value.trim();
+
+  if(!title || !hrs || !rawText) return toast('সব ঘর ফিলাপ করো!');
+  
+  try {
+    const lines = rawText.split('\n');
+    let qList = [];
+    lines.forEach(line => {
+      if(!line.trim()) return;
+      const parts = line.split('|');
+      qList.push({
+        question: parts[0].trim(),
+        answer: parts[1].trim(),
+        options: parts[2].split(',')
+      });
+    });
+
+    const expireTimestamp = Date.now() + (hrs * 60 * 60 * 1000);
+    const newFightRef = push(ref(db, 'mcq_fights'));
+    await set(newFightRef, { title, expireTimestamp, questions: qList, createdAt: Date.now() });
+
+    alert('🎉 MCQ ফাইট সফলভাবে লাইভ করা হয়েছে!');
+    showCOPanel();
+  } catch(e) { alert('ফরম্যাট ভুল হয়েছে! আবার চেক করো।'); }
+}
+
+window.publishMegaBattleExamEngine = async function() {
+  const title = $('btMegaTitle').value.trim(); const duration = parseInt($('btMegaDuration').value.trim()); const rawData = $('btMegaRawString').value.trim();
+  if(!title || !duration || !rawData) return toast('সব ঘর পূরণ করো!');
+  try {
+    const lines = rawData.split('\n'); let parsedQuestions = [];
+    lines.forEach(line => {
+      if(!line.trim()) return; const parts = line.split('|');
+      parsedQuestions.push({ type: parts[0].trim(), question: parts[1].trim(), answer: parts[2].trim(), options: parts[3]?parts[3].split(','):[], points: parts[4], negative: parts[5] });
+    });
+    const endTimestamp = Date.now() + (duration * 60000);
+    await set(push(ref(db, 'battles')), { title, durationMinutes: duration, endTimestamp, questions: parsedQuestions, createdAt: Date.now() });
+    alert('প্লেয়ার্স ব্যাটল এক্সাম সফলভাবে লাইভ করা হয়েছে!'); showCOPanel();
+  } catch(e) { alert('ভুল ফরম্যাট!'); }
+}
+
+window.showUserProfileScreen = function() {
+  if(currentUser?.isBlocked) return renderBlockedScreen();
+  const u = currentUser;
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;">← Back</button><span>My Profile</span></header>
+      <div class="main-content">
+        <div class="card">
+          <div>👤 আইডি নাম্বার: <span class="copyable" style="color:var(--accent); font-weight:bold;">${u.serial}</span></div>
+          <div class="form-builder-row"><label>নাম:</label><input class="input" id="pName" value="${u.name || ''}" disabled></div>
+          <div class="form-builder-row"><label>ক্লাস (Class):</label><input class="input" id="pClass" value="${u.class || ''}"></div>
+          <div class="form-builder-row"><label>স্কুল (School):</label><input class="input" id="pSchool" value="${u.school || ''}"></div>
+          <div class="form-builder-row"><label>বোর্ড (Board):</label><input class="input" id="pBoard" value="${u.board || ''}"></div>
+          <button class="btn btn-success" onclick="saveUserProfile()">Save Profile Data</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+window.saveUserProfile = async function() {
+  const profileData = {
+    class: $('pClass').value.trim(), school: $('pSchool').value.trim(), board: $('pBoard').value.trim()
+  };
+  await update(ref(db, 'users/' + currentUser.serial), profileData);
+  toast('প্রোফাইল সেভ হয়েছে!');
+}
+
+window.showQuest = function(){
+  if(currentUser?.isBlocked) return renderBlockedScreen();
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Quest Box</span></header>
+      <div class="main-content" id="questList"></div>
+    </div>
+  `;
+  loadQuests();
+}
+
+function loadQuests(){
+  onValue(query(ref(db, 'quests'), orderByChild('createdAt')), snap=>{
+    let html = '';
+    if(snap.exists()){
+      Object.entries(snap.val()).reverse().forEach(([id,q])=>{
+        html += `
+          <div class="card">
+            <div onclick="startQuest('${id}')" style="cursor:pointer;">
+              <div style="font-size:12px;color:var(--muted)">${q.type.toUpperCase()}</div>
+              <div style="margin:4px 0;font-weight:600">${q.type === 'picture' ? 'Picture Quest (Open)' : q.question}</div>
+            </div>
+            ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="remove(ref(db,'quests/${id}'))">Delete</button>` : ''}
+          </div>
+        `;
+      });
+    } else html = '<div class="card">কোনো কোয়েস্ট কুইজ নেই।</div>';
+    if($('questList')) $('questList').innerHTML = html;
   });
-  
-  await update(ref(db, 'users/' + currentUser.serial), { score: finalScore });
-  
-  alert(`🏁 MCQ Fight Arena সমাপ্ত!\n\nপ্রাপ্ত নেট স্কোর পরিবর্তন: ${window.activeBattleScoresEarned > 0 ? '+' : ''}${window.activeBattleScoresEarned}`);
-  launchMCQFightStreamWindow();
+}
+
+window.startQuest = async function(id){
+  const snap = await get(ref(db, 'quests/' + id)); if(!snap.exists()) return;
+  const q = snap.val();
+  let answerHTML = `<input class="input" id="qAns" placeholder="উত্তর টাইপ করো..."><button class="btn" onclick="submitQuestAnswer('${id}',$('qAns').value)">Submit</button>`;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="showQuest()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button></header><div class="main-content"><div class="card"><h3>${q.question}</h3>${answerHTML}</div></div></div>`;
+}
+
+window.submitQuestAnswer = async function(id, ans){
+  const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
+  let isCorrect = checkAnswerSmart(ans, q.answer);
+  let uSnap = await get(ref(db, 'users/' + currentUser.serial));
+  let finalCalculated = (uSnap.val().score || 0) + (isCorrect ? parseInt(q.points) : -parseInt(q.negative || 0));
+  if(finalCalculated < 0) finalCalculated = 0;
+  await update(ref(db, 'users/' + currentUser.serial), { score: finalCalculated });
+  toast(isCorrect ? 'সঠিক উত্তর!' : 'ভুল উত্তর!'); showQuest();
 }
 
 window.showGames = function(){
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  markSectionAsSeen('custom_games');
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Games Corner</span></header>
-      <div class="main-content"><div class="nav-grid" id="gamesGrid"></div></div>
-    </div>
-  `;
-  loadDynamicContent('custom_games', 'gamesGrid', 'গেম');
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Games Corner</span></header><div class="main-content"><div class="nav-grid" id="gamesGrid"></div></div></div>`;
+  loadDynamicCOModules('custom_games', 'gamesGrid');
 }
-
 window.showTools = function(){
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  markSectionAsSeen('custom_tools');
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Tools Box</span></header>
-      <div class="main-content"><div class="nav-grid" id="toolsGrid"></div></div>
-    </div>
-  `;
-  loadDynamicContent('custom_tools', 'toolsGrid', 'টুলস');
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Tools Box</span></header><div class="main-content"><div class="nav-grid" id="toolsGrid"></div></div></div>`;
+  loadDynamicCOModules('custom_tools', 'toolsGrid');
 }
 
-function loadDynamicContent(node, gridId, label){
+function loadDynamicCOModules('custom_games', 'gamesGrid');
+function loadDynamicCOModules(node, gridId){
   onValue(ref(db, node), snap=>{
     const grid = $(gridId); if(!grid) return;
     if(snap.exists()){
-      let items = Object.entries(snap.val());
-      items.reverse(); 
       grid.innerHTML = ''; 
-      items.forEach(([id, item]) => {
-        const btn = document.createElement('div'); btn.className = 'nav-btn'; btn.style.position = 'relative';
+      Object.entries(snap.val()).reverse().forEach(([id, item]) => {
+        const btn = document.createElement('div'); btn.className = 'nav-btn';
         btn.innerHTML = `<div class="icon">${item.icon || '⚙️'}</div><div class="label">${item.name}</div>`;
-        
-        if(currentUser?.isCO) {
-          let delBtn = document.createElement('button');
-          delBtn.className = 'delete-inline-btn'; delBtn.style.top = '2px'; delBtn.style.right = '2px';
-          delBtn.textContent = 'X';
-          delBtn.onclick = (e) => { e.stopPropagation(); window.deleteItemLive(`${node}/${id}`, label); };
-          btn.appendChild(delBtn);
-        }
-        
         btn.onclick = () => { launchEngineDynamicSandbox(item.name, item.code); };
         grid.appendChild(btn);
       });
-    } else { grid.innerHTML = '<div class="card" style="grid-column:span 3;">কোনো কনটেন্ট নেই।</div>'; }
+    } else grid.innerHTML = '<div class="card">খালি রয়েছে।</div>';
   });
 }
 
 function launchEngineDynamicSandbox(title, codeString) {
   $('app').innerHTML = `
     <div class="screen active" style="background:#fff; min-height:100vh;">
-      <header style="background:#fff;">
-        <div class="header-top">
-          <button onclick="renderHome()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;">← Exit Engine</button>
-          <strong style="color:var(--accent); font-size:14px;">${title}</strong>
-          <span></span>
-        </div>
-      </header>
-      <div id="sandboxRenderArea" style="padding:10px;" class="allow-copy"></div>
+      <header><div><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Exit</button> <strong>${title}</strong></div></header>
+      <div id="sandboxRenderArea" style="padding:15px;" class="allow-copy">${codeString}</div>
     </div>
   `;
-  
-  if (codeString.trim().startsWith('<') || codeString.toLowerCase().includes('</div>') || codeString.toLowerCase().includes('<style>')) {
-    $('sandboxRenderArea').innerHTML = codeString;
-    const scripts = $('sandboxRenderArea').querySelectorAll("script");
-    scripts.forEach(oldScript => {
-      const newScript = document.createElement("script");
-      Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-      newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-      oldScript.parentNode.replaceChild(newScript, oldScript);
-    });
-  } else {
-    try {
-      let wrapperFunc = new Function(codeString);
-      wrapperFunc();
-    } catch(err) {
-      $('sandboxRenderArea').innerHTML = `<div class="card" style="color:var(--accent2)">Runtime Error: ${err.message}</div>`;
-    }
-  }
 }
 
-window.showEvent = function(){ displayContentScreen('events', 'Events Feed', 'events'); }
-window.showKnowledge = function(){ displayContentScreen('knowledge', 'Knowledge Feed', 'knowledge'); }
+window.showEvent = function(){ displayContentScreen('events', 'Events'); }
+window.showKnowledge = function(){ displayContentScreen('knowledge', 'Knowledge Feed'); }
 
-function displayContentScreen(type, title, secKey){
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  markSectionAsSeen(secKey);
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>${title}</span></header><div class="main-content" id="contentList">Loading Content...</div></div>`;
+function displayContentScreen(type, title){
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>${title}</span></header><div class="main-content" id="contentList"></div></div>`;
   onValue(ref(db, type), snap=>{
-    let html = ''; if(snap.exists()){
-      let items = Object.entries(snap.val());
-      items.reverse(); 
-      items.forEach(([id, c])=>{
-        html += `<div class="card">
-          <h3>${c.title}</h3><p style="margin-top:6px; color:var(--muted); white-space:pre-wrap;">${c.desc}</p>
-          ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('${type}/${id}', 'ফিড কনটেন্ট')">Delete</button>` : ''}
-        </div>`;
+    let html = '';
+    if(snap.exists()){
+      Object.entries(snap.val()).reverse().forEach(([id, c])=>{
+        html += `<div class="card"><h3>${c.title}</h3><p style="margin-top:4px;">${c.desc}</p></div>`;
       });
-    } else html = '<div class="card">কোনো ডেটা নেই।</div>';
-    if($('contentList')) $('contentList').innerHTML = html;
+    }
+    if($('contentList')) $('contentList').innerHTML = html || '<div class="card">No content.</div>';
   });
 }
 
 window.showLiterature = function(){
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  markSectionAsSeen('literature');
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Literature Wall</span></header><div class="main-content" id="litList">Loading Library...</div></div>`;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Literature Library</span></header><div class="main-content" id="litList"></div></div>`;
   onValue(ref(db, 'literature'), snap=>{
-    let html = ''; if(snap.exists()){
-      let items = Object.entries(snap.val());
-      items.reverse(); 
-      items.forEach(([id, l])=>{
-        html += `<div class="card">
-          <h3>${l.title}</h3><hr style="border-color:var(--border);margin:8px 0;"><p class="literature-text" style="white-space:pre-wrap; line-height:1.5;">${l.desc}</p>
-          ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('literature/${id}', 'লিটারেচার')">Delete</button>` : ''}
-        </div>`;
+    let html = '';
+    if(snap.exists()){
+      Object.entries(snap.val()).reverse().forEach(([id, l])=>{
+        html += `<div class="card"><h3>${l.title}</h3><p class="literature-text">${l.desc}</p></div>`;
       });
-    } else { html = '<div class="card">কোনো লিটারেচার আপলোড করা হয়নি।</div>'; }
-    if($('litList')) $('litList').innerHTML = html;
+    }
+    if($('litList')) $('litList').innerHTML = html || '<div class="card">No Literature.</div>';
   });
 }
 
 window.showApp = function(){
-  if(currentUser?.isBlocked) return renderBlockedScreen();
-  markSectionAsSeen('applications');
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Applications Forms</span></header><div class="main-content" id="appList">Loading Forms...</div></div>`;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Applications Forms</span></header><div class="main-content" id="appList"></div></div>`;
   onValue(ref(db, 'applications'), snap=>{
-    let html = ''; if(snap.exists()){
-      let items = Object.entries(snap.val());
-      items.reverse(); 
-      items.forEach(([id, a])=>{
-        html += `<div class="card">
-          <h3>${a.title}</h3><p style="margin:6px 0; font-size:13px; color:var(--muted);">${a.desc}</p>
-          <small style="color:var(--accent2); font-weight:bold;">Last Date: ${a.lastDate || 'Not Set'}</small>
-          <button class="btn" onclick="openFillAppScreen('${id}')">Fill Form</button>
-          ${currentUser?.isCO ? `<button class="delete-inline-btn" onclick="deleteItemLive('applications/${id}', 'অ্যাপ্লিকেশন ফরম')">Delete</button>` : ''}
-        </div>`;
+    let html = '';
+    if(snap.exists()){
+      Object.entries(snap.val()).reverse().forEach(([id, a])=>{
+        html += `<div class="card"><h3>${a.title}</h3><p>${a.desc}</p><button class="btn" onclick="openFillAppScreen('${id}')">Fill Form</button></div>`;
       });
-    } else { html = '<div class="card">কোনো অ্যাপ্লিকেশন উপলব্ধ নেই।</div>'; }
-    if($('appList')) $('appList').innerHTML = html;
+    }
+    if($('appList')) $('appList').innerHTML = html || '<div class="card">No Application Forms.</div>';
   });
 }
 
@@ -1548,402 +1371,148 @@ window.openFillAppScreen = async function(appId){
   const a = snap.val(); const fields = a.fields ? a.fields.split(',') : [];
   let formHTML = `<h3>${a.title}</h3>`;
   fields.forEach(f=>{
-    if(f.trim()){ formHTML += `<div class="form-builder-row"><label><b>${f.trim()}:</b></label><input type="text" class="input d-app-input" data-field="${f.trim()}" style="margin:0;"></div>`; }
+    formHTML += `<div class="form-builder-row"><label>${f.trim()}:</label><input type="text" class="input d-app-input" data-field="${f.trim()}"></div>`;
   });
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="showApp()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button></header><div class="main-content"><div class="card">${formHTML}<button class="btn" onclick="submitAppForm('${appId}')">Submit Data</button></div></div></div>`;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="showApp()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Cancel</button></header><div class="main-content"><div class="card">${formHTML}<button class="btn" onclick="submitAppForm('${appId}')">Submit Form</button></div></div></div>`;
 }
 
 window.submitAppForm = async function(appId){
-  const uCheckSnap = await get(ref(db, 'users/' + currentUser.serial));
-  if(uCheckSnap.exists() && uCheckSnap.val().isBlocked) return renderBlockedScreen();
-
   let formData = { userSerial: currentUser.serial, userName: currentUser.name, submittedAt: Date.now() };
-  let isEmpty = false;
   document.querySelectorAll('.d-app-input').forEach(el=>{
-    const val = el.value.trim(); const fieldName = el.getAttribute('data-field');
-    if(!val) isEmpty = true; formData[fieldName] = val;
+    formData[el.getAttribute('data-field')] = el.value.trim();
   });
-  if(isEmpty) return toast('সবকটি ঘর পূরণ করা আবশ্যক!');
   await set(ref(db, 'submitted_applications/' + appId + '/' + currentUser.serial), formData);
-  toast('সফলভাবে সাবমিট হয়েছে!'); showApp();
+  toast('সফলভাবে ফর্ম সাবমিট হয়েছে!'); renderHome();
+}
+
+window.showLinksScreen = function() {
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Important Links Portal</span></header><div class="main-content" id="linksContainer"></div></div>`;
+  onValue(ref(db, 'shared_links'), snap => {
+    let html = '';
+    if(snap.exists()){
+      Object.entries(snap.val()).reverse().forEach(([id, l]) => {
+        html += `<div class="card"><strong>🔗 ${l.title}</strong><br><a href="${l.url}" target="_blank">${l.url}</a></div>`;
+      });
+    }
+    if($('linksContainer')) $('linksContainer').innerHTML = html || '<div class="card">No links.</div>';
+  });
 }
 
 window.showCOPanel = function(){
   if(!currentUser?.isCO) return toast('শুধুমাত্র সিওরা এই প্যানেলে ঢুকতে পারবে!');
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>CO Control Center</span></header>
+      <header><button onclick="renderHome()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Home</button><span>CO Panel</span></header>
       <div class="main-content">
-        
-        <div class="card" style="border: 2px dashed var(--accent); background: #f1f8e9;">
-          <h3 style="color:var(--accent)">🔍 Search Member Profile</h3>
-          <div style="display:flex; gap:6px; margin-top:6px;">
-            <input class="input" id="searchTargetSerial" placeholder="YC_XXXXXX" style="margin:0;">
-            <button class="btn btn-success" style="width:auto; margin:0; padding:0 16px;" onclick="coSearchUserProfile()">Search</button>
-          </div>
-          <div id="coSearchResultArea" style="margin-top:10px; font-size:13px; display:none;"></div>
-        </div>
-
         <div class="nav-grid">
           <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coAddLiveBattle()"><div class="icon">⚔️</div><div class="label">Mega Battle Set</div></div>
+          <div class="nav-btn" onclick="coAddLiveBattle()"><div class="icon">⚔️</div><div class="label">Live Mega Battle Setup</div></div>
           <div class="nav-btn" onclick="coAddDynamic('custom_games', 'Game')"><div class="icon">🎮</div><div class="label">Add Game</div></div>
           <div class="nav-btn" onclick="coAddDynamic('custom_tools', 'Tool')"><div class="icon">🛠️</div><div class="label">Add Tool</div></div>
-          <div class="nav-btn" onclick="coAddApplication()"><div class="icon">📄</div><div class="label">Create App Form</div></div>
-          <div class="nav-btn" onclick="coManageUsers()"><div class="icon">👥</div><div class="label">Manage Members</div></div>
-          <div class="nav-btn" onclick="coContactMembers()"><div class="icon">💬</div><div class="label">Contact Member</div></div>
-          <div class="nav-btn" onclick="coAttendMembers()"><div class="icon">📋</div><div class="label">Attend Member</div></div>
-          <div class="nav-btn" onclick="coAddContent()"><div class="icon">✍️</div><div class="label">Add Content</div></div>
-          <div class="nav-btn" onclick="coShareLinkScreen()"><div class="icon">🔗</div><div class="label">Share URL Link</div></div>
+          <div class="nav-btn" onclick="coAddContent()"><div class="icon">✍️</div><div class="label">Add Feed Content</div></div>
+          <div class="nav-btn" onclick="coContactMembers()"><div class="icon">💬</div><div class="label">Inbox Chats</div></div>
         </div>
         
         <div class="card" style="margin-top:15px; border-color:var(--warning);">
-          <h3>🔴 Add Scroll Tag</h3>
-          <input class="input" id="tagText" placeholder="যা লিখবে স্ক্রল লাইনে ভাসবে">
-          <input class="input" id="tagDate" type="date" placeholder="শেষ তারিখ">
-          <button class="btn btn-warning" onclick="saveScrollTag()">Update Scroll Tag</button>
-        </div>
-
-        <div class="card" style="margin-top:20px;">
-          <h3>Make Another CO</h3>
-          <input class="input" id="newCoSerial" placeholder="Target Member Serial No">
-          <button class="btn btn-warning" onclick="promoteToCO()">Promote to CO</button>
+          <h3>¼ Notice Manager</h3>
+          <input class="input" id="tagText" placeholder="নোটিশ টেক্সট">
+          <input class="input" id="tagDate" type="date">
+          <button class="btn btn-warning" onclick="saveScrollTag()">Update Scroll Notice</button>
         </div>
         
-        <div class="card" style="margin-top:15px; border-color:var(--accent2);">
-          <h3 style="color:var(--accent2)">Danger Zone</h3>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">কোয়েস্টের সব প্রশ্ন এবং সমস্ত ইউজারের স্কোর ০ করে রিসেট করবে।</p>
-          <button class="btn btn-danger" onclick="triggerSmartQuestReset()">Reset Quests & Scores (Zero Score)</button>
+        <div class="card" style="margin-top:15px;">
+          <h3>Danger Zone</h3>
+          <button class="btn btn-danger" onclick="triggerSmartQuestReset()">Reset All Quests & Scores (Zero)</button>
         </div>
       </div>
     </div>
   `;
-}
-
-window.coSearchUserProfile = async function() {
-  const serial = $('searchTargetSerial').value.trim();
-  const resArea = $('coSearchResultArea');
-  if(!serial) { toast('মেম্বার সিরিয়াল দিন!'); return; }
-  
-  resArea.style.display = "block";
-  resArea.innerHTML = "লোড করা হচ্ছে...";
-  
-  try {
-    const snap = await get(ref(db, 'users/' + serial));
-    if(snap.exists()) {
-      let data = snap.val();
-      resArea.innerHTML = `
-        <div style="background:var(--card); padding:10px; border-radius:8px; border:1px solid var(--border); line-height:1.5;">
-          <div><b>নাম:</b> ${data.name || '-'}</div>
-          <div><b>আইডি সিরিয়াল:</b> ${data.serial || '-'}</div>
-          <div style="color:var(--accent2); font-weight:bold;"><b>🔒 পাসওয়ার্ড:</b> ${data.password || 'পাসওয়ার্ড সেট নেই'}</div>
-          <div><b>স্কোর (Score):</b> ${data.score || 0}</div>
-          <div><b>স্ট্যাটাস:</b> ${data.isCO ? 'CO' : 'General Member'}</div>
-          <div><b>ক্লাস:</b> ${data.class || '-'} | <b>স্কুল:</b> ${data.school || '-'}</div>
-          <div><b>বোর্ড:</b> ${data.board || '-'} | <b>ঠিকানা:</b> ${data.address || '-'}</div>
-          <div><b>মোবাইল:</b> ${data.mobile || '-'} | <b>অন্যান্য:</b> ${data.others || '-'}</div>
-        </div>
-      `;
-    } else {
-      resArea.innerHTML = `<span style="color:var(--accent2);">এই সিরিয়ালের কোনো অ্যাকাউন্ট সার্ভারে নেই!</span>`;
-    }
-  } catch(e) { resArea.innerHTML = "সার্ভার এরর!"; }
 }
 
 window.saveScrollTag = async function() {
   const text = $('tagText').value.trim(); const lastDate = $('tagDate').value;
   if(!text || !lastDate) return toast('সব ঘর পূরণ করো!');
   await set(ref(db, 'scroll_tag'), { text, lastDate });
-  await set(ref(db, 'indicators/notice_board'), { timestamp: Date.now() });
-  handlePushNotification("New Scroll Tag Update", text);
-  toast('লাল লাইনের নোটিশ আপডেট হয়েছে!'); showCOPanel();
-}
-
-window.promoteToCO = async function(){
-  const s = $('newCoSerial').value.trim(); if(!s) return toast('সিরিয়াল নাম্বার বসাও');
-  const userRef = ref(db, 'users/' + s); const snap = await get(userRef);
-  if(snap.exists()){ await update(userRef, { isCO: true }); toast('সফলভাবে CO করা হয়েছে!'); showCOPanel(); }
-  else { toast('ভুল সিরিয়াল নাম্বার!'); }
-}
-
-window.coAddLiveBattle = function() {
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Create MCQ Fight Challenge</span></header>
-      <div class="main-content">
-        <div class="card">
-          <h3>MCQ Fight প্রশ্নপত্র তৈরি করো ⚔️</h3>
-          <input class="input" id="btMegaTitle" placeholder="শিরোনাম (যেমন: ইতিহাস MCQ Fight চ্যালেন্জ)">
-          <input class="input" id="btMegaDuration" type="number" placeholder="চ্যালেন্জটির মোট সক্রিয় সময়সীমা (মিনিট)">
-          
-          <p style="margin-top:12px; font-size:12px; font-weight:bold; color:var(--accent)">📝 প্রশ্নপত্র টাইপ করার গাইড ফরম্যাট (নিচে দেখে হুবহু টাইপ করো):</p>
-          <textarea class="input" id="btMegaRawString" rows="12" style="font-family:monospace; font-size:12px;" placeholder="mcq|ভারতের রাজধানী কোনটি?|নতুন দিল্লি|কলকাতা,নতুন দিল্লি,مুম্বাই,চেন্নাই|10|2&#10;mcq|সবচেয়ে হালকা গ্যাস কোনটি?|হাইড্রোজেন|অক্সিজেন,নাইট্রোজেন,হাইড্রোজেন|10|2"></textarea>
-          
-          <button class="btn btn-danger" style="margin-top:10px;" onclick="publishMegaBattleExamEngine()">Publish MCQ Fight Arena</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-window.publishMegaBattleExamEngine = async function() {
-  const title = $('btMegaTitle').value.trim();
-  const duration = parseInt($('btMegaDuration').value.trim());
-  const rawData = $('btMegaRawString').value.trim();
-
-  if(!title || !duration || !rawData) return toast('সব ঘর সঠিকভাবে পূরণ করো!');
-
-  const lines = rawData.split('\n');
-  let parsedQuestions = [];
-
-  try {
-    lines.forEach(line => {
-      if(!line.trim()) return;
-      const parts = line.split('|');
-      const type = parts[0].trim().toLowerCase();
-      const question = parts[1].trim();
-      const answer = parts[2].trim();
-      const options = parts[3] ? parts[3].split(',') : [];
-      const points = parseInt(parts[4]) || 10;
-      const negative = parseInt(parts[5]) || 0;
-
-      parsedQuestions.push({ type, question, answer, options, points, negative });
-    });
-
-    if(parsedQuestions.length === 0) throw new Error('কোনো প্রশ্ন পাওয়া যায়নি!');
-
-    const endTimestamp = Date.now() + (duration * 60000);
-
-    const battleRef = push(ref(db, 'battles'));
-    await set(battleRef, {
-      title,
-      durationMinutes: duration,
-      endTimestamp,
-      questions: parsedQuestions,
-      createdAt: Date.now()
-    });
-
-    await set(ref(db, 'indicators/live_battles'), { timestamp: Date.now() });
-    handlePushNotification("New Live MCQ Fight Challenge!", title);
-
-    alert(`🎉 সফলভাবে MCQ Fight চ্যালেন্জ লাইভ করা হয়েছে!`);
-    showCOPanel();
-  } catch(e) {
-    alert('❌ প্রশ্নপত্র ফরম্যাটে ভুল রয়েছে! গাইডলাইনটি পুনরায় চেক করো।');
-  }
-}
-
-window.coShareLinkScreen = function() {
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Share Links</span></header>
-      <div class="main-content">
-        <div class="card">
-          <h3>নতুন গুরুত্বপূর্ণ লিঙ্ক যুক্ত করো</h3>
-          <input class="input" id="lnTitle" placeholder="লিঙ্কের নাম/কিসের লিঙ্ক">
-          <input class="input" id="lnUrl" placeholder="ইউআরএল লিঙ্ক পেস্ট করো (https://...)">
-          <input class="input" id="lnDesc" placeholder="ছোট বিবরণ (অপশনাল)">
-          <button class="btn" onclick="saveSharedLink()">Publish Active Link</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-window.saveSharedLink = async function() {
-  const title = $('lnTitle').value.trim(); const url = $('lnUrl').value.trim(); const description = $('lnDesc').value.trim();
-  if(!title || !url) return toast('নাম ও লিঙ্ক ইনপুট দেওয়া আবশ্যক!');
-  if(!isValidURL(url)) return toast('সঠিক ইউআরএল (https:// সহ) দিন!');
-  await push(ref(db, 'shared_links'), { title, url, description, createdAt: Date.now() });
-  toast('লিঙ্কটি সফলভাবে মেম্বারদের জন্য লাইভ করা হয়েছে!'); showCOPanel();
-}
-
-window.coManageUsers = async function(){
-  const snap = await get(ref(db,'users')); 
-  let html = '<div class="card"><h3>All Registered Members Directory</h3></div>';
-  if(snap.exists()){
-    Object.entries(snap.val()).forEach(([serial, u]) => {
-      if(serial === currentUser.serial) return;
-      html += `
-        <div class="card" style="border-left: 5px solid ${u.isBlocked?'var(--accent2)':'var(--success)'}">
-          <strong>${u.name}</strong> <small>(${u.isCO ? 'CO' : 'Member'})</small>
-          <div style="font-size:12px;" class="copyable">Serial: ${serial} | <b>Score: <span id="scr_${serial}">${u.score || 0}</span></b></div>
-          
-          <div style="margin-top: 8px; display:flex; gap:4px; align-items:center; background:var(--bg); padding:6px; border-radius:6px; flex-wrap:wrap;">
-            <span style="font-size:11px; font-weight:bold;">Score Control:</span>
-            <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 1)">+1</button>
-            <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 10)">+10</button>
-            <button class="score-control-btn" style="background:#e8f5e9; color:#2e7d32;" onclick="alterUserScoreLive('${serial}', 50)">+50</button>
-            <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -1)">-1</button>
-            <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -10)">-10</button>
-            <button class="score-control-btn" style="background:#ffebee; color:#c62828;" onclick="alterUserScoreLive('${serial}', -50)">-50</button>
-          </div>
-
-          <div class="flex-actions" style="margin-top:10px;">
-            <button class="btn btn-secondary" onclick="openCOReplyStream('${serial}','${u.name}')">Message</button>
-            ${u.isBlocked ? 
-              `<button class="btn btn-success" onclick="toggleBlockUser('${serial}', false)">Unblock</button>` : 
-              `<button class="btn btn-warning" onclick="toggleBlockUser('${serial}', true)">Block</button>`
-            }
-            <button class="btn btn-danger" onclick="executePermanentDeleteUser('${serial}', '${u.name}')">Delete Account</button>
-          </div>
-        </div>
-      `;
-    });
-  }
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Manage Users</span></header><div class="main-content">${html}</div></div>`;
-}
-
-window.alterUserScoreLive = async function(serial, amount) {
-  try {
-    const userRef = ref(db, 'users/' + serial);
-    const snap = await get(userRef);
-    if(snap.exists()) {
-      let currentScore = snap.val().score || 0;
-      let newScore = currentScore + amount;
-      if (newScore < 0) newScore = 0; 
-      await update(userRef, { score: newScore });
-      if($('scr_' + serial)) $('scr_' + serial).textContent = newScore;
-      toast(`স্কোর সফলভাবে ${amount > 0 ? '+' : ''}${amount} পরিবর্তন করা হয়েছে!`);
-    }
-  } catch(e) { toast('স্কোর আপডেট ব্যর্থ হয়েছে!'); }
-}
-
-window.toggleBlockUser = async function(serial, shouldBlock) {
-  await update(ref(db, 'users/' + serial), { isBlocked: shouldBlock });
-  toast(shouldBlock ? 'ইউজারকে ব্লক করা হয়েছে!' : 'ইউজার আনব্লকড!'); coManageUsers();
-}
-
-window.executePermanentDeleteUser = function(serial, name) {
-  if(confirm(`⚠️ তুমি কি সত্যিই মেম্বার ${name} এর অ্যাকাউন্টটি চিরতরে ডাটাবেস থেকে ডিলিট করতে চাও?`)) {
-    remove(ref(db, 'users/' + serial)).then(() => {
-      remove(ref(db, 'friends/' + serial));
-      remove(ref(db, 'co_messages/' + serial));
-      toast('অ্যাকাউন্টটি মুছে ফেলা হয়েছে!');
-      coManageUsers();
-    });
-  }
-}
-
-window.coAddContent = function(){
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Add Content & Notice</span></header>
-      <div class="main-content">
-        <div class="card" style="border-color:var(--warning)">
-          <h3>📌 Update Notice Board (নোটিশ বোর্ড আপডেট)</h3>
-          <textarea class="input" id="boardNoticeT" rows="4" placeholder="নোটিশ বোর্ডের বিস্তারিত লেখাটি এখানে দাও..."></textarea>
-          <input class="input" id="boardNoticeD" type="date" placeholder="শেষ সময়সীমা">
-          <button class="btn btn-warning" onclick="saveBoardNotice()">Publish to Notice Board</button>
-        </div>
-        
-        <div class="card" style="margin-top:15px;">
-          <h3>Add Live Literature / Event / Knowledge</h3>
-          <select class="input" id="contentType"><option value="literature">Literature (৯১ দিনের মাথায় উড়ে যাবে)</option><option value="events">Event</option><option value="knowledge">Knowledge Feed</option></select>
-          <input class="input" id="cTitle" placeholder="শিরোনাম">
-          <textarea class="input" id="cDesc" rows="5" placeholder="বিস্তারিত বিবরণ"></textarea>
-          <button class="btn" onclick="saveContent()">Publish Content</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-window.saveBoardNotice = async function() {
-  const text = $('boardNoticeT').value.trim(); const lastDate = $('boardNoticeD').value;
-  if(!text || !lastDate) return toast('নোটিশ এবং লাস্ট ডেট দুটোই দাও!');
-  await set(ref(db, 'notice_board'), { text, lastDate, createdAt: Date.now() });
-  await set(ref(db, 'indicators/notice_board'), { timestamp: Date.now() });
-  handlePushNotification("Notice Board Update", text);
-  toast('নোটিশ বোর্ড সফলভাবে লাইভ আপডেট হয়েছে!'); showCOPanel();
-}
-
-window.saveContent = async function(){
-  const type = $('contentType').value; const title = $('cTitle').value.trim(); const desc = $('cDesc').value.trim();
-  if(!title || !desc) return toast('সব ঘর পূরণ করো!');
-  await push(ref(db, type), { title, desc, createdAt: Date.now() });
-  await set(ref(db, `indicators/${type}`), { timestamp: Date.now() });
-  handlePushNotification(`New ${type} Content`, title);
-  toast('কনটেন্ট পাবলিশ হয়েছে!'); showCOPanel();
+  toast('স্ক্রল নোটিশ আপডেট হয়েছে!'); showCOPanel();
 }
 
 window.coAddQuest = function(){
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Add New Quest</span></header>
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Add Quest</span></header>
       <div class="main-content">
-        <select class="input" id="qType" onchange="adjustQuestInputs()"><option value="mcq">MCQ</option><option value="vsaq">VSAQ</option><option value="break_hint">Break Hint (১০টি হিন্ট)</option><option value="picture">Picture URL</option></select>
-        <input class="input" id="qQ" placeholder="Question / Image URL">
-        <input class="input" id="qCoAns" placeholder="Correct Answer (সঠিক উত্তর)">
-        <input class="input" id="qOpt" placeholder="Options (MCQ এর জন্য কমা দিয়ে আলাদা করুন)">
-        
-        <div id="hintInputsContainer" style="display:none; margin-top:10px;">
-          <label style="font-size:12px; font-weight:bold; color:var(--warning);">১০টি হিন্ট ইনপুট দিন (পাইপ চিহ্ন | দিয়ে আলাদা করুন):</label>
-          <textarea class="input" id="qHints" rows="4" placeholder="হিন্ট১|হিন্ট২|হিন্ট৩..."></textarea>
-        </div>
-
-        <input class="input" id="qPoints" type="number" value="10" placeholder="প্লাস পয়েন্ট">
-        <input class="input" id="qNegative" type="number" value="0" placeholder="ভুল উত্তরের জন্য মাইনাস পয়েন্ট">
-        <button class="btn" onclick="saveQuest()">Publish Quest Live</button>
+        <select class="input" id="qType"><option value="mcq">MCQ</option><option value="vsaq">VSAQ</option></select>
+        <input class="input" id="qQ" placeholder="Question">
+        <input class="input" id="qCoAns" placeholder="Answer">
+        <input class="input" id="qPoints" type="number" value="10" placeholder="Points">
+        <input class="input" id="qNegative" type="number" value="2" placeholder="Negative Mark">
+        <button class="btn" id="publishQuestLiveBtn" onclick="saveQuest()">Publish Quest Live</button>
       </div>
     </div>
   `;
 }
-window.adjustQuestInputs = function() {
-  if($('qType').value === 'break_hint') { $('hintInputsContainer').style.display = 'block'; }
-  else { $('hintInputsContainer').style.display = 'none'; }
-}
+
 window.saveQuest = async function(){
-  const type = Typ = $('qType').value; const question = $('qQ').value.trim();
-  const answer = $('qCoAns').value.trim(); const options = $('qOpt').value.split(',');
-  const points = parseInt($('qPoints').value) || 0; const negative = parseInt($('qNegative').value) || 0;
-  const hints = $('qHints') ? $('qHints').value.trim() : "";
-
-  if(!question || !answer) return toast('প্রশ্ন ও সঠিক উত্তর দেওয়া আবশ্যিক!');
-  await push(ref(db, 'quests'), { type, question, answer, options, points, negative, hints, createdAt: Date.now() });
-  await set(ref(db, 'indicators/quests'), { timestamp: Date.now() });
-  handlePushNotification("New Quest Added", question);
-  toast('নতুন কুইজ প্রশ্ন লাইভ এড হয়েছে!'); showCOPanel();
+  const type = $('qType').value; const question = $('qQ').value.trim(); const answer = $('qCoAns').value.trim();
+  const points = $('qPoints').value; const negative = $('qNegative').value;
+  if(!question || !answer) return toast('প্রশ্ন এবং উত্তর আবশ্যিক!');
+  await push(ref(db, 'quests'), { type, question, answer, points, negative, createdAt: Date.now() });
+  toast('কোয়েস্ট সরাসরি লাইভ পাবলিশ হয়েছে!'); showCOPanel();
 }
 
-window.coAddApplication = function(){
+window.coAddContent = function(){
   $('app').innerHTML = `
     <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Create App Form</span></header>
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Add Feed Content</span></header>
       <div class="main-content">
-        <input class="input" id="appTitle" placeholder="অ্যাপ্লিকেশনের শিরোনাম"><textarea class="input" id="appDesc" rows="3" placeholder="বিবরণ"></textarea>
-        <input class="input" id="appFields" placeholder="ইনপুট বক্সের নামসমূহ (যেমন: Age,Class,Roll)"><input class="input" id="appLastDate" type="date">
-        <button class="btn" onclick="saveApplication()">Publish Live Form</button>
+        <select class="input" id="contentType"><option value="literature">Literature</option><option value="events">Event</option><option value="knowledge">Knowledge Feed</option></select>
+        <input class="input" id="cTitle" placeholder="Title">
+        <textarea class="input" id="cDesc" rows="4" placeholder="Description"></textarea>
+        <button class="btn" onclick="saveContent()">Publish Content</button>
       </div>
     </div>
   `;
 }
-window.saveApplication = async function(){
-  const title = $('appTitle').value.trim(); const desc = $('appDesc').value.trim();
-  const fields = $('appFields').value.trim(); const lastDate = $('appLastDate').value;
-  if(!title || !fields || !lastDate) return toast('সব ঘর পূরণ করা বাধ্যতামূলক!');
-  await push(ref(db, 'applications'), { title, desc, fields, lastDate, createdAt: Date.now() });
-  await set(ref(db, 'indicators/applications'), { timestamp: Date.now() });
-  handlePushNotification("New Application Form", title);
-  toast('ডায়নামিক ফর্ম লাইভ পাবলিশ হয়েছে!'); showCOPanel();
+window.saveContent = async function(){
+  const type = $('contentType').value; const title = $('cTitle').value.trim(); const desc = $('cDesc').value.trim();
+  await push(ref(db, type), { title, desc, createdAt: Date.now() });
+  toast('কনটেন্ট সফলভাবে আপলোড হয়েছে!'); showCOPanel();
+}
+
+window.coAddDynamic = function(node, label){
+  $('app').innerHTML = `
+    <div class="screen active">
+      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Add ${label}</span></header>
+      <div class="main-content">
+        <input class="input" id="dynName" placeholder="Name"><input class="input" id="dynIcon" placeholder="Emoji Icon">
+        <textarea class="input" id="dynCode" rows="6" placeholder="HTML/JS Code Here..."></textarea>
+        <button class="btn" onclick="saveDynamic('${node}')">Publish ${label}</button>
+      </div>
+    </div>
+  `;
+}
+window.saveDynamic = async function(node){
+  const name = $('dynName').value.trim(); const icon = $('dynIcon').value.trim(); const code = $('dynCode').value.trim();
+  await push(ref(db, node), { name, icon, code, createdAt: Date.now() });
+  toast('মডিউল পাবলিশ সফল!'); showCOPanel();
 }
 
 window.coContactMembers = function(){
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Inbox Stream</span></header><div class="main-content" id="coMsgList">Loading...</div></div>`;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Inbox Stream</span></header><div class="main-content" id="coMsgList"></div></div>`;
   onValue(ref(db, 'co_messages'), snap=>{
-    let html = ''; if(snap.exists()){
+    let html = '';
+    if(snap.exists()){
       Object.entries(snap.val()).forEach(([userSerial, msgGroup])=>{
         const lastMsg = Object.values(msgGroup).pop();
-        html += `<div class="card" onclick="openCOReplyStream('${userSerial}','${lastMsg.userName || 'Member'}')" style="cursor:pointer;">
-          <strong>${lastMsg.userName || 'Unknown'} (${userSerial})</strong><p style="color:var(--accent);">Last: ${lastMsg.text}</p>
-        </div>`;
+        html += `<div class="card" onclick="openCOReplyStream('${userSerial}','${lastMsg.userName || 'Member'}')" style="cursor:pointer;"><strong>${lastMsg.userName || 'Member'} (${userSerial})</strong><p style="color:var(--accent);">Last: ${lastMsg.text}</p></div>`;
       });
-    } else html = '<div class="card">কোনো মেসেজ নেই।</div>';
-    if($('coMsgList')) $('coMsgList').innerHTML = html;
+    }
+    $('coMsgList').innerHTML = html || '<div class="card">No message logs.</div>';
   });
 }
 
 window.openCOReplyStream = function(userSerial, userName){
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Reply to ${userName}</span></header><div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;"></div><div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border)"><input class="input" id="coReplyInput" style="margin:0"><button class="btn" onclick="sendCOReply('${userSerial}')" style="width:auto;margin:0">Reply</button></div></div>`;
+  $('app').innerHTML = `<div class="screen active"><header><button onclick="coContactMembers()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Reply to ${userName}</span></header><div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;" class="allow-copy"></div><div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border)"><input class="input" id="coReplyInput" style="margin:0"><button class="btn" onclick="sendCOReply('${userSerial}')" style="width:auto;margin:0">Reply</button></div></div>`;
   onValue(ref(db, 'co_messages/' + userSerial), snap=>{
     let html = ''; if(snap.exists()){ Object.values(snap.val()).forEach(m=>{ let isCo = m.sender === 'CO_PANEL'; html += `<div style="text-align:${isCo?'right':'left'};margin:5px"><b>${isCo?'তুমি':userName}:</b> ${m.text}</div>`; }); }
     if($('chatBox')){ $('chatBox').innerHTML = html; $('chatBox').scrollTop = $('chatBox').scrollHeight; }
@@ -1955,94 +1524,50 @@ window.sendCOReply = async function(userSerial){
   $('coReplyInput').value = '';
 }
 
-window.coAttendMembers = function(){
-  $('app').innerHTML = `<div class="screen active"><header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Attendance Table</span></header><div class="main-content" id="attendContent">Loading...</div></div>`;
-  get(ref(db, 'applications')).then(appsSnap=>{
-    if(!appsSnap.exists()){ $('attendContent').innerHTML = '<div class="card">কোনো অ্যাপ্লিকেশন তৈরি করা নেই।</div>'; return; }
-    onValue(ref(db, 'submitted_applications'), subSnap=>{
-      let html = '';
-      Object.entries(appsSnap.val()).forEach(([appId, appInfo])=>{
-        html += `<div class="card" style="overflow-x:auto;"><h4>${appInfo.title}</h4>`;
-        if(subSnap.exists() && subSnap.val()[appId]){
-          let tableRows = ''; const dynamicFields = appInfo.fields ? appInfo.fields.split(',') : [];
-          let tableHeaders = '<th>Name</th><th>Serial</th>'; dynamicFields.forEach(f=> { if(f.trim()) tableHeaders += `<th>${f.trim()}</th>`; });
-          Object.values(subSnap.val()[appId]).forEach(subData=>{
-            tableRows += `<tr><td>${subData.userName}</td><td>${subData.userSerial}</td>`;
-            dynamicFields.forEach(f=>{ if(f.trim()) tableRows += `<td>${subData[f.trim()] || '-'}</td>`; }); tableRows += `</tr>`;
-          });
-          html += `<table><thead><tr>${tableHeaders}</tr></thead><tbody>${tableRows}</tbody></table>`;
-        } else { html += `<p style="font-size:12px;color:var(--muted);margin-top:6px;">কেউ ফর্ম পূরণ করেনি।</p>`; }
-        html += `</div>`;
-      });
-      if($('attendContent')) $('attendContent').innerHTML = html;
-    });
-  });
-}
-
-window.coAddDynamic = function(node, label){
-  $('app').innerHTML = `
-    <div class="screen active">
-      <header><button onclick="showCOPanel()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>Add Custom ${label}</span></header>
-      <div class="main-content">
-        <input class="input" id="dynName" placeholder="${label} Name"><input class="input" id="dynIcon" placeholder="Emoji Icon">
-        <textarea class="input" id="dynCode" rows="8" placeholder="HTML কোড বা জাভাস্ক্রিপ্ট কোড পেস্ট করুন..." style="height:150px; font-family:monospace;"></textarea>
-        <button class="btn" onclick="saveDynamic('${node}')">Publish ${label}</button>
-      </div>
-    </div>
-  `;
-}
-window.saveDynamic = async function(node){
-  const name = $('dynName').value.trim(); const icon = $('dynIcon').value.trim(); const code = $('dynCode').value.trim();
-  if(!name || !code) return toast('সব ঘর পূরণ করো!');
-  await push(ref(db, node), { name, icon, code, createdAt: Date.now() });
-  await set(ref(db, `indicators/${node}`), { timestamp: Date.now() });
-  handlePushNotification(`New Custom Content`, name);
-  toast('লাইভ পাবলিশ হয়েছে!'); showCOPanel();
-}
-
 window.triggerSmartQuestReset = async function() {
-  if(confirm('⚠️ তুমি কি নিশ্চিত যে কোয়েস্টের সকল প্রশ্ন এবং সমস্ত ইউজারের স্কোর শূন্য (০) করতে চাও?')) {
-    toast('রিসেট প্রক্রিয়া চলছে...');
+  if(confirm('তুমি কি নিশ্চিত যে কোয়েস্টের সমস্ত প্রশ্ন এবং সমস্ত ইউজারের স্কোর ০ করে রিসেট করতে চাও?')) {
     await remove(ref(db, 'quests'));
-    await remove(ref(db, 'quest_answers'));
-    
     const usersSnap = await get(ref(db, 'users'));
     if(usersSnap.exists()){
-      const userIds = Object.keys(usersSnap.val());
-      for(let uid of userIds) {
-        await update(ref(db, 'users/' + uid), { score: 0 });
-      }
+      for(let uid of Object.keys(usersSnap.val())) { await update(ref(db, 'users/' + uid), { score: 0 }); }
     }
-    if(currentUser) {
-      currentUser.score = 0;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
-    }
-    alert('কোয়েস্ট রিসেট সফল!');
-    window.location.reload();
+    alert('কোয়েস্ট ও স্কোর সফলভাবে রিসেট সম্পন্ন হয়েছে!'); window.location.reload();
   }
+}
+
+function updateNetworkStatus(){
+  const dot = $('netDot'); if(!dot) return;
+  window.addEventListener('online', ()=>dot.classList.remove('offline'));
+  window.addEventListener('offline', ()=>dot.classList.add('offline'));
+  if(!navigator.onLine) dot.classList.add('offline');
+}
+
+function loadScrollTagAndNotice(){
+  onValue(ref(db, 'scroll_tag'), snap=>{
+    const data = snap.val(); if(data && $('noticeText')) $('noticeText').textContent = data.text || 'Welcome!';
+  });
+  onValue(ref(db, 'notice_board'), snap=>{
+    const data = snap.val(); if(data && $('boardNoticeText')) $('boardNoticeText').textContent = data.text || 'বর্তমানে কোনো নোটিশ নেই।';
+  });
 }
 
 async function checkCOSetup(){
   const snap = await get(ref(db,'users')); let hasCO = snap.exists() && Object.values(snap.val()).some(u=>u.isCO);
   if(!hasCO && currentUser){
     let div = document.createElement('div'); div.className='card';
-    div.innerHTML=`<h3>Claim CO Panel</h3><input type="password" class="input" id="coPass" placeholder="Master Setup Code"><button class="btn" onclick="claimCO()">Become CO</button>`;
-    const mc = $('app').querySelector('.main-content'); if(mc) mc.insertBefore(div, mc.firstChild);
+    div.innerHTML=`<h3>Claim CO Panel</h3><input type="password" class="input" id="coPass" placeholder="Enter Password"><button class="btn btn-warning" onclick="claimCO()">Claim</button>`;
+    const mc = document.querySelector('.main-content'); if(mc) mc.appendChild(div);
   }
 }
 window.claimCO = async function(){
-  if($('coPass').value === 'YourChoice2026') {
-    await update(ref(db,'users/'+currentUser.serial), {isCO:true});
-    toast('অভিনন্দন! তুমি এখন সিও।'); renderHome();
-  } else { toast('ভুল কোড!'); }
+  if($('coPass').value === 'SNANDI2009'){
+    await update(ref(db,'users/'+currentUser.serial),{isCO:true}); currentUser.isCO = true; toast('CO Panel Claimed!'); renderHome();
+  } else { toast('ভুল পাসওয়ার্ড!'); }
 }
 
-function initApp(){
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if(saved){ currentUser = JSON.parse(saved); syncUserAndRender(); }
-  else { renderAuth(); }
-}
-initApp();
+if(localStorage.getItem(STORAGE_KEY)){
+  currentUser = JSON.parse(localStorage.getItem(STORAGE_KEY)); syncUserAndRender();
+} else { renderAuth(); }
 </script>
 </body>
 </html>
