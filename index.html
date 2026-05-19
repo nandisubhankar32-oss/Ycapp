@@ -460,7 +460,7 @@ function renderHome(){
         </div>
       </div>
 
-      <div class="card" style="background:#fffide7; border-left:5px solid var(--warning);">
+      <div class="card" style="background:#fffde7; border-left:5px solid var(--warning);">
         <h3 style="color:var(--warning); font-size:14px;">📌 নোটিশ বোর্ড</h3>
         <p id="boardNoticeText" style="margin-top:4px; font-size:13px; color:#1a1a1a;">লোড হচ্ছে...</p>
       </div>
@@ -906,7 +906,7 @@ window.openCOChat = function(){
   $('app').innerHTML = `
     <div class="screen active">
       <header><button onclick="showContact()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>CO Support Desk</span></header>
-      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto" class="allow-copy"></div>
+      <div class="main-content" id="chatBox" style="height:calc(100vh - 160px);overflow-y:auto;" class="allow-copy"></div>
       <div style="position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;padding:10px;background:var(--card);display:flex;gap:8px;border-top:1px solid var(--border)">
         <input class="input" id="coChatInput" placeholder="সিও প্যানেলে মেসেজ লিখুন..." style="margin:0">
         <button class="btn btn-danger" onclick="sendMsgToCO()" style="width:auto;margin:0">Send</button>
@@ -1038,7 +1038,7 @@ window.showMCQFightArenaScreen = function() {
   $('app').innerHTML = `
     <div class="screen active">
       <header><button onclick="showBattleStreamPortal()" style="background:none;border:none;color:var(--accent);cursor:pointer;">← Back</button><span>MCQ Fight Arena ⏱️</span></header>
-      <div class="main-content" id="mcqFightListArea">চলতি ফایت সেট খোঁজা হচ্ছে...</div>
+      <div class="main-content" id="mcqFightListArea">চলতি ফাইট সেট খোঁজা হচ্ছে...</div>
     </div>
   `;
   onValue(ref(db, 'mcq_fights'), snap => {
@@ -1065,7 +1065,7 @@ window.startMCQFightLiveLoop = async function(fightId) {
   
   const historySnap = await get(ref(db, `mcq_fight_attempts/${fightId}/${currentUser.serial}`));
   if(historySnap.exists()) {
-    alert('⚠️ তুমি ইতিমধ্যে একবার এই MCQ ফাইটে অংশ নিয়েছ!');
+    alert('⚠️ তুমি ইতিমধ্যে একবার এই MCQ ফাইটে অংশ নিয়েছ! নিয়ম অনুযায়ী একসাথে একবারই সুযোগ পাবে।');
     showMCQFightArenaScreen(); return;
   }
 
@@ -1160,9 +1160,9 @@ window.coAddLiveBattle = function() {
 
         <div class="card" style="margin-top:15px; border-top:4px solid var(--warning);">
           <h3>🥊 ক্রিয়েট লাইভ MCQ ফাইট (15s Challenge)</h3>
-          <input class="input" id="fcFightTitle" placeholder="ফাইটের শিরোনাম">
+          <input class="input" id="fcFightTitle" placeholder="ফাইটের শিরোনাম (যেমন: ইতিহাস MCQ ধামাকা)">
           <input class="input" id="fcDurationHours" type="number" placeholder="কত ঘন্টা পর পর স্বয়ংক্রিয়ভাবে মুছে যাবে?">
-          <textarea class="input" id="fcRawQuestions" rows="8" placeholder="প্রশ্ন|সঠি উত্তর|অপশন১,অপশন২,অপশন৩,অপশন৪" style="font-family:monospace; font-size:12px;"></textarea>
+          <textarea class="input" id="fcRawQuestions" rows="8" placeholder="প্রশ্ন|সঠি উত্তর|অপশন১,অপশন২,অপশন৩,অপশন৪&#10;&#10;উদাহরন:&#10;বাংলার প্রথম নবাব কে ছিলেন?|মুর্শিদকুলি খাঁ|সিরাজউদ্দৌলা,মুর্শিদকুলি খাঁ,মীরজাফর,আলিবর্দী খাঁ" style="font-family:monospace; font-size:12px;"></textarea>
           <button class="btn btn-warning" onclick="publishCOPanelMCQFightEngine()">Publish Fast MCQ Fight Game</button>
         </div>
       </div>
@@ -1194,7 +1194,7 @@ window.publishCOPanelMCQFightEngine = async function() {
     const newFightRef = push(ref(db, 'mcq_fights'));
     await set(newFightRef, { title, expireTimestamp, questions: qList, createdAt: Date.now() });
 
-    alert('🎉 MCQ ফাইট সফলভাবে লাইভ করা হয়েছে!');
+    alert('🎉 একসাথে অনেকগুলো এমসিকিউ সহ MCQ ফাইট সফলভাবে লাইভ করা হয়েছে!');
     showCOPanel();
   } catch(e) { alert('ফরম্যাট ভুল হয়েছে! আবার চেক করো।'); }
 }
@@ -1284,7 +1284,8 @@ window.submitQuestAnswer = async function(id, ans){
   const qSnap = await get(ref(db, 'quests/' + id)); const q = qSnap.val();
   let isCorrect = checkAnswerSmart(ans, q.answer);
   let uSnap = await get(ref(db, 'users/' + currentUser.serial));
-  let finalCalculated = (uSnap.val().score || 0) + (isCorrect ? parseInt(q.points) : -parseInt(q.negative || 0));
+  let scoreDiff = isCorrect ? parseInt(q.points) : -parseInt(q.negative || 0);
+  let finalCalculated = (uSnap.val().score || 0) + scoreDiff;
   if(finalCalculated < 0) finalCalculated = 0;
   await update(ref(db, 'users/' + currentUser.serial), { score: finalCalculated });
   toast(isCorrect ? 'সঠিক উত্তর!' : 'ভুল উত্তর!'); showQuest();
@@ -1299,7 +1300,6 @@ window.showTools = function(){
   loadDynamicCOModules('custom_tools', 'toolsGrid');
 }
 
-function loadDynamicCOModules('custom_games', 'gamesGrid');
 function loadDynamicCOModules(node, gridId){
   onValue(ref(db, node), snap=>{
     const grid = $(gridId); if(!grid) return;
@@ -1406,7 +1406,7 @@ window.showCOPanel = function(){
       <div class="main-content">
         <div class="nav-grid">
           <div class="nav-btn" onclick="coAddQuest()"><div class="icon">📚</div><div class="label">Add Quest</div></div>
-          <div class="nav-btn" onclick="coAddLiveBattle()"><div class="icon">⚔️</div><div class="label">Live Mega Battle Setup</div></div>
+          <div class="nav-btn" onclick="coAddLiveBattle()"><div class="icon">⚔️</div><div class="label">Live Mega Battle Control</div></div>
           <div class="nav-btn" onclick="coAddDynamic('custom_games', 'Game')"><div class="icon">🎮</div><div class="label">Add Game</div></div>
           <div class="nav-btn" onclick="coAddDynamic('custom_tools', 'Tool')"><div class="icon">🛠️</div><div class="label">Add Tool</div></div>
           <div class="nav-btn" onclick="coAddContent()"><div class="icon">✍️</div><div class="label">Add Feed Content</div></div>
@@ -1414,7 +1414,7 @@ window.showCOPanel = function(){
         </div>
         
         <div class="card" style="margin-top:15px; border-color:var(--warning);">
-          <h3>¼ Notice Manager</h3>
+          <h3>🔴 Add Scroll Notice</h3>
           <input class="input" id="tagText" placeholder="নোটিশ টেক্সট">
           <input class="input" id="tagDate" type="date">
           <button class="btn btn-warning" onclick="saveScrollTag()">Update Scroll Notice</button>
@@ -1446,7 +1446,7 @@ window.coAddQuest = function(){
         <input class="input" id="qCoAns" placeholder="Answer">
         <input class="input" id="qPoints" type="number" value="10" placeholder="Points">
         <input class="input" id="qNegative" type="number" value="2" placeholder="Negative Mark">
-        <button class="btn" id="publishQuestLiveBtn" onclick="saveQuest()">Publish Quest Live</button>
+        <button class="btn" onclick="saveQuest()">Publish Quest Live</button>
       </div>
     </div>
   `;
@@ -1455,9 +1455,9 @@ window.coAddQuest = function(){
 window.saveQuest = async function(){
   const type = $('qType').value; const question = $('qQ').value.trim(); const answer = $('qCoAns').value.trim();
   const points = $('qPoints').value; const negative = $('qNegative').value;
-  if(!question || !answer) return toast('প্রশ্ন এবং উত্তর আবশ্যিক!');
+  if(!question || !answer){ return toast('প্রশ্ন ও সঠিক উত্তর দেওয়া আবশ্যক!'); }
   await push(ref(db, 'quests'), { type, question, answer, points, negative, createdAt: Date.now() });
-  toast('কোয়েস্ট সরাসরি লাইভ পাবলিশ হয়েছে!'); showCOPanel();
+  toast('কোয়েস্ট সরাসরি হোম পেজের Quest এ লাইভ পাবলিশ হয়েছে!'); showCOPanel();
 }
 
 window.coAddContent = function(){
