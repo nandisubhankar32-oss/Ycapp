@@ -4797,6 +4797,22 @@ window.addScore = addScore;
 window.dbSet = dbSet;
 bootApp();
 </script>
+  <script>
+  window.addEventListener('error', function(e) {
+    var l = document.getElementById('app-loader');
+    if (l) l.classList.add('hidden');
+    alert("কোড এরর পাওয়া গেছে: " + e.message + " (Line: " + e.lineno + ")");
+  });
+  setTimeout(function() {
+    var l = document.getElementById('app-loader');
+    if (l && !l.classList.contains('hidden')) {
+      l.classList.add('hidden');
+      if (!window.openScreen) {
+        alert("স্ক্রিপ্ট চালু হয়নি! হয় কোড জোড়া লাগানোয় সিনট্যাক্স ভুল আছে, অথবা ফোনের File Manager/Offline-এর কারণে Firebase Module লোড হতে পারেনি।");
+      }
+    }
+  }, 3500);
+</script>
 </body>
 </html>
 
